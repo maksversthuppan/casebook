@@ -41,6 +41,9 @@ async def open_search(page: Page, timeout: int = 45_000) -> None:
             CASE_SEARCH_URL, wait_until="domcontentloaded", timeout=timeout
         )
     except Exception as exc:  # noqa: BLE001 - surfaced to the advocate as prose
+        # The advocate gets a plain sentence; the real Playwright error (DNS,
+        # connection reset, TLS failure, plain timeout) only exists here.
+        log.warning("could not navigate to the DCMS portal: %r", exc)
         raise PortalError(
             "Could not reach the DCMS portal. It is often briefly unavailable; "
             "try again in a few minutes."
