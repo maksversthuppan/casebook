@@ -1,0 +1,4 @@
+1. vakalath yes/no if yes then name of the person
+2. Option to relinquish The case ( To be kinda mean on hold )
+3. Option to add phone number of the clients ( should be optional) along with any notes to the specific client (again optional)
+4. Hearing representation assignment ( which advocate/clerk) Should be a dropdown of existing advocates or which clerk was entrusted to do the assignment. This is true for each hearing should be able to assign this for each hearing 

@@ -1,0 +1,494 @@
+@import "tailwindcss";
+
+/* Tailwind's dark: variant defaults to prefers-color-scheme, which would ignore
+   a theme the advocate chose. Nothing uses dark: today — everything goes
+   through the tokens below — but this keeps it honest if anything ever does. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---------------------------------------------------------------------------
+   Cause List — see DESIGN.md.
+
+   Two voices run through everything: --court is what DCMS said, --firm is what
+   somebody here wrote. They are never allowed to look alike, because the whole
+   system turns on which of the two a fact came from (rule 1, ADR-0007).
+
+   Four hues, each with exactly one job, chosen far enough apart on the wheel to
+   survive a monochrome print and a colour-blind reader (they are backed by
+   glyphs either way):
+
+     firm     blue   — the firm's own hand, and every interaction
+     court    teal   — what the portal reported
+     danger   red    — relinquished, errors, destructive acts, and nothing else
+     caution  amber  — a date that went by with nothing recorded
+
+   Every foreground/background pair below is measured, not eyeballed: body text
+   clears 4.5:1 in both themes and control edges clear 3:1.
+   --------------------------------------------------------------------------- */
+
+/* The theme is driven by data-theme on <html>, which the head script in
+   layout.tsx resolves to a concrete light or dark before the first paint — see
+   app/components/Theme.tsx. Because "system" is resolved there rather than
+   here, each palette is written exactly once. */
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --paper: #f4f7fa;
+  --leaf: #ffffff;
+  --sunk: #e8edf3;
+
+  --ink: #0f1620;
+  --ink-soft: #51606f;
+  --ink-faint: #606f80;
+
+  /* Three weights of line, and the distinction matters: --rule and
+     --rule-strong are decorative separators, but --edge draws the boundary of
+     an actual control and so has to clear 3:1 (WCAG 1.4.11). */
+  --rule: #dbe3ec;
+  --rule-strong: #a9b6c5;
+  --edge: #7d8da1;
+
+  --firm: #1d4ed8;
+  --firm-wash: #e8effd;
+
+  --court: #0f6b64;
+  --court-wash: #e2f2f0;
+
+  --danger: #b3261e;
+  --danger-wash: #fdeae8;
+
+  --caution: #8a5a09;
+  --caution-wash: #fbf1db;
+
+  /* Text laid over a solid firm/danger fill. */
+  --on-accent: #ffffff;
+
+  --grain: 0.03;
+  --grain-blend: multiply;
+}
+
+:root[data-theme="dark"] {
+  /* Tells the browser to draw native scrollbars, form controls and the date
+     picker's own icon for a dark surface. It follows the chosen theme rather
+     than the OS, which a prefers-color-scheme rule could not do. */
+  color-scheme: dark;
+
+  --paper: #0d1219;
+  --leaf: #151d27;
+  --sunk: #090d13;
+
+  --ink: #e4ebf3;
+  --ink-soft: #95a5b8;
+  --ink-faint: #7e8ea1;
+
+  --rule: #222d3a;
+  --rule-strong: #41505f;
+  --edge: #637588;
+
+  --firm: #7ea6ff;
+  --firm-wash: #15203a;
+
+  --court: #4fc7b6;
+  --court-wash: #0d2b28;
+
+  --danger: #ff8a80;
+  --danger-wash: #2c1517;
+
+  --caution: #e2b45c;
+  --caution-wash: #2b2312;
+
+  /* The accents lighten in the dark theme, so text on top of them goes dark
+     rather than white — white on a light blue fill is 2.4:1. */
+  --on-accent: #0d1219;
+
+  --grain: 0.045;
+  --grain-blend: screen;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-leaf: var(--leaf);
+  --color-sunk: var(--sunk);
+
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-edge: var(--edge);
+
+  --color-court: var(--court);
+  --color-court-wash: var(--court-wash);
+  --color-firm: var(--firm);
+  --color-firm-wash: var(--firm-wash);
+  --color-danger: var(--danger);
+  --color-danger-wash: var(--danger-wash);
+  --color-caution: var(--caution);
+  --color-caution-wash: var(--caution-wash);
+  --color-on-accent: var(--on-accent);
+
+  --font-display: var(--font-newsreader), "Iowan Old Style", Georgia, serif;
+  --font-ui: var(--font-franklin), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-register), ui-monospace, "SFMono-Regular", monospace;
+}
+
+@layer base {
+  html {
+    /* Malayalam is in the fallback rather than bundled: party names come off an
+       English portal, but a note about a client may not. */
+    font-family: var(--font-ui), "Noto Sans Malayalam", sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    min-height: 100%;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  /* Paper grain. Felt rather than seen — at 3% it stops the flat fill from
+     reading as a screen, and it costs one fixed layer. */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+    opacity: var(--grain);
+    mix-blend-mode: var(--grain-blend);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  ::selection {
+    background: var(--firm);
+    color: var(--on-accent);
+  }
+
+  /* Focus is the firm's hand on the page, so it is the firm's colour. */
+  :focus-visible {
+    outline: 2px solid var(--firm);
+    outline-offset: 2px;
+    border-radius: 1px;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  input,
+  textarea {
+    caret-color: var(--firm);
+  }
+
+  /* The date picker's own icon used to be inverted by hand under a
+     prefers-color-scheme rule. That keyed off the OS, so it inverted the wrong
+     way as soon as the theme could be chosen independently of it. The
+     color-scheme declaration on each palette does the same job correctly. */
+}
+
+@layer components {
+  /* --- the register hand -------------------------------------------------- */
+
+  /* Court numbers, CINOs and dates. Set in mono so columns of them line up and
+     so an identifier never reads as a word. */
+  .ident,
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "ss01";
+    letter-spacing: -0.01em;
+  }
+
+  /* --- small-caps labels -------------------------------------------------- */
+
+  .label {
+    font-family: var(--font-ui);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* --- rules -------------------------------------------------------------- */
+
+  /* The law-report double rule: heavy over light, with air between. */
+  .double-rule {
+    border-bottom: 1px solid var(--rule-strong);
+    box-shadow: 0 3px 0 -2px var(--rule);
+  }
+
+  /* --- prose -------------------------------------------------------------- */
+
+  /* Anything a person wrote — diary entries, notes — is set in the reading
+     face. It is writing, and it should look like writing. */
+  .hand {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    line-height: 1.62;
+    letter-spacing: 0.003em;
+  }
+
+  /* --- controls ----------------------------------------------------------- */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 2px;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.25;
+    white-space: nowrap;
+    transition:
+      box-shadow 120ms ease,
+      transform 120ms ease,
+      background-color 120ms ease,
+      border-color 120ms ease;
+  }
+
+  .btn:disabled {
+    opacity: 0.45;
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: not-allowed;
+  }
+
+  /* Letterpress, not elevation: the shadow is hard, and the button presses
+     into it. Nothing in a printed document floats. */
+  .btn-primary {
+    background: var(--firm);
+    color: var(--on-accent);
+    box-shadow: 2px 2px 0 var(--rule-strong);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: 3px 3px 0 var(--rule-strong);
+    transform: translate(-1px, -1px);
+  }
+
+  .btn-primary:active:not(:disabled) {
+    box-shadow: 1px 1px 0 var(--rule-strong);
+    transform: translate(1px, 1px);
+  }
+
+  .btn-quiet {
+    border: 1px solid var(--edge);
+    background: transparent;
+    color: var(--ink);
+  }
+
+  .btn-quiet:hover:not(:disabled) {
+    background: var(--firm-wash);
+    border-color: var(--firm);
+    color: var(--firm);
+  }
+
+  .btn-quiet:active:not(:disabled) {
+    transform: translate(1px, 1px);
+  }
+
+  /* A control that is barely a control: "change", "remove", "show done". The
+     padding is there to carry the hit area past the text's own height. */
+  .btn-plain {
+    display: inline-block;
+    padding: 0.35rem 0.25rem;
+    margin: -0.35rem -0.25rem;
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+    text-underline-offset: 3px;
+  }
+
+  .btn-plain:hover:not(:disabled) {
+    color: var(--firm);
+    text-decoration: underline;
+  }
+
+  .field-input {
+    width: 100%;
+    border: 1px solid var(--edge);
+    border-radius: 2px;
+    background: var(--leaf);
+    padding: 0.4rem 0.6rem;
+    /* 16px on small screens or iOS zooms the whole page in on focus. It steps
+       down to the density the rest of the interface uses once there is room. */
+    font-size: 1rem;
+    line-height: 1.4;
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  @media (min-width: 640px) {
+    .field-input {
+      font-size: 0.8125rem;
+    }
+  }
+
+  .field-input::placeholder {
+    color: var(--ink-faint);
+  }
+
+  .field-input:focus {
+    outline: none;
+    border-color: var(--firm);
+    box-shadow: inset 0 -2px 0 -1px var(--firm);
+  }
+
+  /* The rule above drops the ring for mouse users; a keyboard user still needs
+     one, and it has to come after to win. */
+  .field-input:focus-visible {
+    outline: 2px solid var(--firm);
+    outline-offset: 1px;
+  }
+
+  select.field-input {
+    appearance: none;
+    padding-right: 1.6rem;
+    background-image:
+      linear-gradient(45deg, transparent 50%, currentColor 50%),
+      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position:
+      calc(100% - 0.85rem) 55%,
+      calc(100% - 0.6rem) 55%;
+    background-size:
+      0.25rem 0.25rem,
+      0.25rem 0.25rem;
+    background-repeat: no-repeat;
+  }
+
+  /* --- provenance marks --------------------------------------------------- */
+
+  /* The rule down the left edge of a record, in the colour of whoever it came
+     from. This is the whole two-voices idea in three declarations. */
+  .from-court {
+    border-left: 2px solid var(--court);
+  }
+
+  .from-firm {
+    border-left: 2px solid var(--firm);
+  }
+
+  /* --- the stamp ---------------------------------------------------------- */
+
+  /* Relinquished, and only relinquished. Red belongs to nothing else in the
+     interface, so it carries the whole weight of the warning. Tilted because it
+     is a stamp on a file, and because it must be impossible to skim past. */
+  .stamp {
+    display: inline-block;
+    border: 1.5px solid var(--danger);
+    border-radius: 2px;
+    background: var(--danger-wash);
+    padding: 0.1rem 0.4rem;
+    font-family: var(--font-ui);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--danger);
+    rotate: -1.5deg;
+  }
+
+  .stamp-loud {
+    background: var(--danger);
+    color: var(--on-accent);
+    font-size: 0.6875rem;
+    padding: 0.15rem 0.55rem;
+  }
+
+  /* --- rows --------------------------------------------------------------- */
+
+  /* Hovering a list row slides a marker into the margin instead of washing the
+     whole row in colour. */
+  .row-mark {
+    position: relative;
+  }
+
+  .row-mark::before {
+    content: "";
+    position: absolute;
+    left: -0.75rem;
+    top: 0.55rem;
+    bottom: 0.55rem;
+    width: 2px;
+    background: var(--firm);
+    opacity: 0;
+    transform: translateX(-3px);
+    transition:
+      opacity 140ms ease,
+      transform 140ms ease;
+  }
+
+  .row-mark:hover::before {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@layer utilities {
+  /* One staggered settle on load. Depth of 8 covers the longest page. */
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .rise {
+    animation: rise 420ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  }
+
+  .rise-1 {
+    animation-delay: 40ms;
+  }
+  .rise-2 {
+    animation-delay: 90ms;
+  }
+  .rise-3 {
+    animation-delay: 140ms;
+  }
+  .rise-4 {
+    animation-delay: 190ms;
+  }
+  .rise-5 {
+    animation-delay: 240ms;
+  }
+  .rise-6 {
+    animation-delay: 290ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rise,
+    .rise-1,
+    .rise-2,
+    .rise-3,
+    .rise-4,
+    .rise-5,
+    .rise-6 {
+      animation: none;
+    }
+
+    .row-mark::before {
+      transition: none;
+    }
+
+    /* The only other thing that moves on its own. */
+    .animate-pulse {
+      animation: none;
+    }
+  }
+}

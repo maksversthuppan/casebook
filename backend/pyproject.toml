@@ -1,0 +1,36 @@
+[project]
+name = "dcms-backend"
+version = "0.1.0"
+description = "Case repository for a Kerala law firm"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic[email]>=2.9",
+    "pydantic-settings>=2.6",
+    "argon2-cffi>=23.1",
+    "itsdangerous>=2.2",
+    "playwright>=1.62.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.28",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+# One event loop for the whole run: the test engine's asyncpg connections are
+# bound to the loop that opened them, and a per-test loop breaks them.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+
+[tool.ruff]
+line-length = 100

@@ -1,0 +1,13 @@
+# Secrets and issued credentials
+.env
+credentials.txt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+.next/

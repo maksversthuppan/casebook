@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: dcms-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dcms
+      POSTGRES_PASSWORD: dcms
+      POSTGRES_DB: dcms
+    # 5433 on the host: the office machine already runs Postgres on 5432.
+    ports:
+      - "5433:5432"
+    volumes:
+      - dcms-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dcms -d dcms"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  dcms-pgdata:
