@@ -22,8 +22,11 @@ from app.models import Base  # noqa: E402  (imports every model for autogenerate
 target_metadata = Base.metadata
 
 # One source of truth for the connection string: the application settings, not a
-# second copy in alembic.ini that drifts.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# second copy in alembic.ini that drifts. configparser's interpolation treats a
+# bare "%" as the start of a reference, which a percent-encoded password (common
+# from hosted Postgres providers) will contain - so literal percents must be
+# doubled before this becomes a config value.
+config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
