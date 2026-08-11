@@ -11,10 +11,12 @@ Tick items as they land, and add a line under *Findings* when reality
 contradicts an assumption — same discipline as the main `ROADMAP.md`, for the
 same reason: this is the memory between sessions.
 
-**Status: not started.** Architecture, technology choices, and the decisions
-behind them (Tauri over Docker Desktop, Windows-only, skip code-signing for
-v1, public releases repo) are recorded in `docs/desktop-app-plan.md`. Nothing
-below has been built yet.
+**Status: Phase A done (2026-08-11), on the Ubuntu dev machine.** Architecture,
+technology choices, and the decisions behind them (Tauri over Docker Desktop,
+Windows-only, skip code-signing for v1, public releases repo) are recorded in
+`docs/desktop-app-plan.md`. Phases B–E are unstarted; B (PyInstaller) and C
+(Tauri shell) are Windows-native work this machine can't run, so they'll need
+either a Windows box/VM or to be attempted directly on Phase E's hardware.
 
 ---
 
@@ -51,10 +53,10 @@ are actually hard.
 
 ## Phase A — Frontend: standalone output
 
-- [ ] `output: "standalone"` in `frontend/next.config.ts`
-- [ ] Confirm the existing `/api/*` rewrite still works unchanged against a
+- [x] `output: "standalone"` in `frontend/next.config.ts`
+- [x] Confirm the existing `/api/*` rewrite still works unchanged against a
       local `BACKEND_URL` under standalone mode
-- [ ] Confirm the standalone build's shape (which files, `node_modules`
+- [x] Confirm the standalone build's shape (which files, `node_modules`
       pruning) is what a Tauri sidecar actually needs to run `next start`
       from
 
@@ -145,4 +147,33 @@ are actually hard.
 ## Findings
 
 Record answers here as they're learned, with the date — same discipline as
-`ROADMAP.md`. Empty for now; nothing has been built yet.
+`ROADMAP.md`.
+
+- **2026-08-11 — Phase A done, and testable on Ubuntu without a Windows box.**
+  `next build` with `output: "standalone"` is cross-platform: it produces a
+  plain Node server (`.next/standalone/server.js`), and `next start`'s
+  behavior — including the `/api/*` rewrite — doesn't depend on the OS.
+  Verified end to end on this machine: built the frontend, copied
+  `public/` and `.next/static/` into the standalone folder (required manually
+  — `server.js` doesn't serve either by default, per Next's own docs), ran
+  `BACKEND_URL=http://localhost:8000 PORT=3100 node .next/standalone/server.js`
+  against the real backend (`uv run uvicorn app.main:app --port 8000`), and
+  confirmed `/api/health` proxies through correctly, static assets
+  (`/next.svg`) serve, and a client route (`/login`) renders. No frontend
+  code changes were needed beyond the one config line, as the plan predicted.
+  The standalone folder shape is flat (`server.js`, `.next/`, `node_modules/`,
+  `package.json` all at one level) since `frontend/` is the Next.js project
+  root — no monorepo nesting to account for in the Phase C sidecar wiring.
+- **2026-08-11 — the standalone trace pulls in a platform-specific native
+  binary the app doesn't even use.** `.next/standalone/node_modules/@img/`
+  contains `sharp-linux-x64` (built for *this* Ubuntu machine) even though
+  nothing in `frontend/src` imports `next/image` — Next bundles `sharp`
+  defensively for the `/_next/image` optimization route regardless of actual
+  usage. Harmless for this test (never invoked), but it means **the
+  standalone build is not portable across OSes as produced here** — a
+  Windows Tauri sidecar needs its own `npm install` (or at minimum the
+  `@img/sharp-win32-x64` optional dep) run on/for Windows, not this Linux
+  build copied over. Matches rule 6 (Windows-only builds happen on Windows)
+  and is one more reason Phase B/C can't be faked on this machine — noting it
+  now so nobody assumes the frontend half of the sidecar can be prepped here
+  and just handed to Tauri on Windows unchanged.
