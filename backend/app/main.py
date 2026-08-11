@@ -5,6 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api import auth, cases, clerks, courts, ingest, parties, record, refresh, search
+
+# TEMPORARY - see app/api/debug_portal_probe.py's module docstring. Remove this
+# import and its include_router call once the Render-portal-reachability
+# question is answered.
+from app.api import debug_portal_probe
 from app.config import get_settings
 from app.dcms import browser as dcms_browser
 from app.dcms.session import registry as portal_sessions
@@ -56,6 +61,7 @@ app.include_router(record.router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")
 app.include_router(refresh.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
+app.include_router(debug_portal_probe.router, prefix="/api")
 
 
 @app.get("/api/health", tags=["meta"])
