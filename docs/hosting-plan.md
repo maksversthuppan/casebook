@@ -190,32 +190,40 @@ something in front of it (a WAF, or the state/NIC network edge) — appears to
 treat Render's outbound IP ranges categorically differently from a normal ISP
 connection.
 
-**What this does and doesn't tell us:** it's consistent with either (a) a
-blanket IP/ASN-based block on "cloud/datacenter" address space, independent of
-which region or provider, or (b) a TLS/JA3-level fingerprint check on
-Chromium's handshake specifically, independent of the `User-Agent` header
-(headless-Chromium's TLS ClientHello can differ from a real browser's even
-when every HTTP-visible header is spoofed correctly). Both produce the exact
-same silent-hang symptom, so the log line above doesn't distinguish them.
-Telling them apart would need one more probe not yet run: a plain, non-browser
-HTTPS request (e.g. `httpx.get(...)`) to the same URL from inside the same
-Render container. If that also hangs, it's (a); if it succeeds, it's (b) and
-worth trying a stealth-patched Chromium before moving infrastructure at all.
-That probe requires a temporary script deployed to Render to actually
-execute from Render's network — not yet done.
+**Resolved — it's a plain network/IP-level block, confirmed two ways:**
 
-Regardless of which it is, redeploying to a different cloud region is unlikely
-to help: every option on Render (and the equivalent on AWS/GCP/Azure/Oracle,
-India regions included) is still cloud/datacenter address space, and if the
-block is ASN-based rather than country-based, an India-region cloud VM is
-still exactly the kind of address the block is likely keying on.
+1. A temporary diagnostic route (`GET /api/debug/portal-probe`, since removed)
+   made a bare TCP `connect()` to `filing.keralacourts.in:443` from Render's
+   network — no TLS, no HTTP, no browser, nothing Chromium-specific at all.
+   DNS resolved in 0.08s; the TCP handshake then hung for the full 15s probe
+   timeout with no SYN-ACK, no RST, nothing. A connection this basic failing
+   rules out TLS/JA3 fingerprinting and anything about Playwright or
+   `User-Agent` spoofing entirely — there was no TLS handshake to fingerprint.
+2. Independently, an ordinary (non-automated) phone browser through a
+   Netherlands VPN got `ERR_CONNECTION_RESET` on the same portal, while the
+   same phone off-VPN worked normally. A ban that also catches a stock mobile
+   browser the moment it's on a foreign/VPN IP is a block on the network
+   address, full stop.
+
+The two failure modes differ slightly — Render's traffic is silently dropped
+(no response at all), the VPN's is actively reset (`RST`) — which suggests two
+separate enforcement points (e.g. one rule for foreign consumer/VPN ranges,
+another for recognized cloud/datacenter ASNs), but both come down to the same
+thing: **the source IP's category, not anything about the client software**,
+decides whether the connection is even allowed to complete.
+
+This means redeploying to a different cloud region won't help: every option on
+Render (and the equivalent on AWS/GCP/Azure/Oracle, India regions included) is
+still cloud/datacenter address space, which appears to be exactly what's
+being blocked regardless of which country that datacenter is physically in.
 
 ## Alternative backend host: Cloudflare Tunnel from a real Indian network
 
 The one network path already *proven* to reach the portal normally (0.5s,
 `200`) is an ordinary residential/office Kerala connection — because that's
 what this whole project was built to run from (ADR-0004: one always-on office
-server). Rather than gambling on a different cloud region, the cheapest fix
+server). Since another cloud region is now a confirmed dead end rather than a
+guess, the cheapest fix
 that's actually certain to work is to run the backend on a machine that's
 already on such a connection, and expose it to the internet with
 [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) —
