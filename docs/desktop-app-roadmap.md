@@ -276,3 +276,21 @@ Record answers here as they're learned, with the date — same discipline as
   which only CI can exercise. PyInstaller has no equivalent local check at
   all: it doesn't cross-compile, so `casebook.spec` and `entrypoint.py` are
   syntax-checked only, not run, until the workflow does.
+- **2026-09-12 — that `cargo check` actually failed the first time, and was
+  worth running.** Two real bugs, both fixed:
+  - `ureq` 2.12's `Request` has one `.timeout()`, not the `.timeout_connect()`
+    / `.timeout_read()` pair `main.rs` was first written with - the API
+    lookup that produced those names was apparently for a different `ureq`
+    version.
+  - The generated icons failed tauri-codegen's PNG loader ("icon ... is not
+    RGBA") despite `identify` calling them `PaletteAlpha`, because
+    ImageMagick 6's default PNG writer silently re-encodes a low-color-count
+    image as an indexed/palette PNG even when told `PNG32:`/`color-type=6` -
+    `identify -verbose`'s "Type" field describes the decoded image's
+    apparent color count, not the on-disk PNG color-type byte tauri-codegen
+    actually checks (verified by reading the IHDR chunk directly). Re-forced
+    with `-type TrueColorAlpha PNG32:` and confirmed via the IHDR bytes, not
+    `identify`, this time.
+  Neither would have surfaced without a real compiler in the loop - a good
+  argument for not skipping this step on a future change to `src-tauri/`,
+  even though it still can't validate the Windows-only bundle step.
