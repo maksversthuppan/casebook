@@ -1,0 +1,20 @@
+[package]
+name = "casebook"
+version = "0.1.0"
+description = "Case repository for a Kerala law firm - desktop shell"
+edition = "2021"
+
+# Windows only for now (docs/desktop-app-roadmap.md Rule 6) - no mobile
+# targets, so no need for the cdylib/staticlib crate-types the default Tauri
+# template adds for iOS/Android.
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Blocking HTTP client for the sidecar health checks in main.rs - no async
+# runtime needed for two polling loops at startup.
+ureq = "2"

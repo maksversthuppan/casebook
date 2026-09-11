@@ -11,3 +11,13 @@ __pycache__/
 # Node
 node_modules/
 .next/
+
+# Desktop build (docs/desktop-app-roadmap.md) - all machine-produced, and
+# app/desktop/_defaults.py additionally carries the baked Supabase DB
+# password, so it's a secret the same way credentials.txt is.
+backend/app/desktop/_defaults.py
+backend/build/
+backend/dist/
+src-tauri/target/
+src-tauri/resources/
+src-tauri/gen/

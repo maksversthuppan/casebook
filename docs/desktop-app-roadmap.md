@@ -11,12 +11,17 @@ Tick items as they land, and add a line under *Findings* when reality
 contradicts an assumption — same discipline as the main `ROADMAP.md`, for the
 same reason: this is the memory between sessions.
 
-**Status: Phase A done (2026-08-11), on the Ubuntu dev machine.** Architecture,
-technology choices, and the decisions behind them (Tauri over Docker Desktop,
-Windows-only, skip code-signing for v1, public releases repo) are recorded in
-`docs/desktop-app-plan.md`. Phases B–E are unstarted; B (PyInstaller) and C
-(Tauri shell) are Windows-native work this machine can't run, so they'll need
-either a Windows box/VM or to be attempted directly on Phase E's hardware.
+**Status: Phase A done (2026-08-11). Phases B, C and a first pass at D written
+(2026-09-11), unverified — nothing has actually run on Windows yet.**
+Architecture, technology choices, and the decisions behind them (Tauri over
+Docker Desktop, Windows-only, skip code-signing for v1, public releases repo)
+are recorded in `docs/desktop-app-plan.md`. B (PyInstaller) and C (Tauri
+shell) are Windows-native work this dev machine can't run directly - resolved
+by using a `windows-latest` GitHub Actions runner as the Windows box instead
+(`.github/workflows/desktop-build.yml`), triggered manually
+(`workflow_dispatch`) and producing a private build artifact, not yet the
+public releases-repo flow Phase D describes. First real run is the next step;
+see Findings below for what could and couldn't be checked before that.
 
 ---
 
@@ -62,49 +67,92 @@ are actually hard.
 
 ## Phase B — Backend: packaged as a native process
 
-- [ ] PyInstaller `--onedir` spec for the FastAPI/uvicorn entrypoint
+- [ ] PyInstaller `--onedir` spec for the FastAPI/uvicorn entrypoint —
+      written: `backend/casebook.spec`, entry `backend/app/desktop/entrypoint.py`.
+      Unverified — PyInstaller doesn't cross-compile, so this has only been
+      syntax-checked on Linux, never actually run
 - [ ] Bake this build's production settings as defaults: `DATABASE_URL`
       (Supabase session pooler), a real `SESSION_SECRET`, `DEBUG=false`,
-      `ALLOWED_ORIGINS` (exact value blocked on the open question below)
-- [ ] Lazy Chromium install on first run — check
-      `%LOCALAPPDATA%\casebook\ms-playwright`, run the install if empty, show
-      a "Setting up (first run only)…" state in the frontend meanwhile
+      `ALLOWED_ORIGINS` (exact value blocked on the open question below) —
+      written: `.github/workflows/desktop-build.yml` generates
+      `backend/app/desktop/_defaults.py` (gitignored) from repo secrets
+      `DESKTOP_DATABASE_URL` / `DESKTOP_SESSION_SECRET` right before the
+      PyInstaller step; shape documented in `_defaults.example.py`. **Blocked
+      on those two secrets existing in the repo** — nobody has set them yet
+- [ ] Lazy Chromium install on first run — written in
+      `entrypoint.py::_ensure_chromium`, using `PLAYWRIGHT_BROWSERS_PATH` +
+      an in-process call to `playwright.__main__.main(["install", "chromium"])`
+      (no real interpreter to `sys.executable -m playwright` inside a frozen
+      app). Relies on `pyinstaller-hooks-contrib`'s playwright hook to bundle
+      the driver's Node runtime as a binary, not just data — **unverified,
+      this is the single riskiest guess in Phase B**, flagged in the open
+      questions below rather than guessed further. No separate "Setting up…"
+      frontend state built — the window simply doesn't appear until the
+      health check passes (Phase C), so the delay reads as a slow launch,
+      not a stuck one; revisit only if that reads badly in practice
 - [ ] Confirm the frozen exe actually launches with every real dependency:
       `uvicorn`, SQLAlchemy + `asyncpg`, `argon2-cffi` (a C extension —
       exactly the kind of thing PyInstaller hidden-import bugs like to hide
-      in), Playwright's own subprocess-launching driver
-- [ ] Alembic is **not** bundled — the Supabase DB is already migrated and
-      seeded; the packaged app only ever connects to it, never migrates it.
-      Confirm nothing in the runtime import path pulls `alembic` in anyway
+      in), Playwright's own subprocess-launching driver — best-guess
+      `hiddenimports` list written into `casebook.spec`; only a real Windows
+      run answers this
+- [x] Alembic is **not** bundled — confirmed nothing under `backend/app/`
+      imports `alembic` (only `alembic.ini`/`migrations/` at the repo root do,
+      and PyInstaller's entry point never touches them); `excludes=["alembic"]`
+      added to `casebook.spec` as a backstop
 
 ## Phase C — Tauri shell
 
-- [ ] Scaffold `src-tauri/` — first Rust/Tauri code in this repo
-- [ ] Wire both sidecars (`externalBin`): the PyInstaller backend folder, a
-      portable Node running the standalone Next.js build
+- [x] Scaffold `src-tauri/` — first Rust/Tauri code in this repo. Uses
+      Tauri v2. `cargo check` passes on Linux (with the desktop GTK/dbus dev
+      packages installed) — real coverage for the code's own logic, but not
+      for the actual Windows bundle target, which only CI can build
+- [ ] Wire both sidecars — **not** `externalBin`: both the backend
+      (`--onedir`, many files) and the frontend (portable Node +
+      the standalone folder tree) are folder trees, not the single
+      self-contained binary `externalBin`/sidecar expects. Bundled instead
+      as plain Tauri `resources` (`tauri.conf.json`) and spawned directly
+      with `std::process::Command` in `src-tauri/src/main.rs` — a deliberate
+      deviation from this file's original wording, not an oversight
 - [ ] Startup sequence: launch both sidecars, poll the backend's
       `/api/health` and the frontend's root until both respond, then show the
-      main window pointed at the frontend's local URL
+      main window pointed at the frontend's local URL — written in
+      `main.rs`; `app.windows` is empty in `tauri.conf.json` so no window
+      (and no connection-refused flash) exists before both checks pass
 - [ ] Clean shutdown: both subprocesses killed when the window closes — no
       orphaned backend process left running after she quits, matching the
       "nothing outlives the process" discipline already in
-      `backend/app/dcms/{session,browser}.py`
-- [ ] Resolve the exact `ALLOWED_ORIGINS` value once Tauri's webview origin
-      is known for real (`tauri://localhost` vs `http://127.0.0.1:<port>`
-      depend on how the window loads the frontend — confirm rather than
-      guess)
+      `backend/app/dcms/{session,browser}.py` — written, via `RunEvent::Exit`
+      in `main.rs`
+- [x] Resolve the exact `ALLOWED_ORIGINS` value — resolved, and turns out
+      not to matter much: the webview loads the frontend sidecar's own URL
+      directly (`http://127.0.0.1:3100`, not `tauri://localhost`), and the
+      browser/webview never calls the backend directly at all — the
+      Next.js server does, server-to-server, which browser CORS doesn't
+      govern. `ALLOWED_ORIGINS` is set to `http://127.0.0.1:3100` in
+      `_defaults.example.py` as a reasonable value for anything that does
+      hit the backend directly, but nothing in the normal request path needs
+      it to be exactly right
 
 ## Phase D — Auto-update
 
 - [ ] New public GitHub repo, releases only (source stays in private
-      `casebook`)
+      `casebook`) — deliberately **not** done yet. This first build is a
+      private test for one person, and the plan's own security note says to
+      hand a first build directly rather than post it anywhere, even the
+      updater's public repo — see `desktop-build.yml`'s private Actions
+      artifact instead
 - [ ] `tauri-plugin-updater` wired to that repo's `latest.json`
 - [ ] Generate and safely store the update-signing keypair (Tauri's own
       update-integrity signature — separate from, and not a substitute for,
       OS-level code-signing, which is deliberately skipped per the rules
       above)
 - [ ] Build/release script (or GitHub Actions workflow) that produces the
-      installer + manifest and publishes them to the releases repo — this
+      installer + manifest and publishes them to the releases repo — partial:
+      `.github/workflows/desktop-build.yml` produces the installer (manual
+      `workflow_dispatch`, uploaded as a private Actions artifact), but there
+      is no manifest and nothing publishes to a releases repo yet - that's
+      the rest of this phase, once the repo above exists. This
       *is* the "ship a feature" loop once it exists
 
 ## Phase E — First real Windows build and verification
@@ -143,6 +191,14 @@ are actually hard.
   expected**, once the friend is actually clicking through a SmartScreen
   warning on every real update? Revisit rule 4 above if so, rather than
   living with silent frustration.
+- **`DESKTOP_DATABASE_URL` / `DESKTOP_SESSION_SECRET` repo secrets don't
+  exist yet.** `.github/workflows/desktop-build.yml` refuses to run without
+  them (fails fast with an explanatory error rather than baking in a
+  placeholder). Someone with the Supabase dashboard needs to add them under
+  the repo's Settings → Secrets → Actions before the workflow can produce a
+  real build - `DESKTOP_DATABASE_URL` is the full `postgresql+asyncpg://...`
+  session-pooler connection string, `DESKTOP_SESSION_SECRET` any long random
+  string (`python -c "import secrets; print(secrets.token_urlsafe(48))"`).
 
 ## Findings
 
@@ -177,3 +233,46 @@ Record answers here as they're learned, with the date — same discipline as
   and is one more reason Phase B/C can't be faked on this machine — noting it
   now so nobody assumes the frontend half of the sidecar can be prepped here
   and just handed to Tauri on Windows unchanged.
+- **2026-09-11 — a `windows-latest` GitHub Actions runner stands in for the
+  Windows box Phase B/C need.** Rather than wait for physical/VM Windows
+  access, `.github/workflows/desktop-build.yml` does the whole build there:
+  frontend standalone build (with a portable Node.exe copied in next to
+  `server.js`, since the target machine has no Node installed), backend
+  PyInstaller `--onedir` build, both assembled as `src-tauri/resources/*`,
+  then `tauri build`. Triggered manually, produces a private Actions
+  artifact. This also resolves the prior sharp/`@img` finding automatically
+  — the frontend `npm ci`/`npm run build` now happens on Windows, for
+  Windows, not copied over from this Linux machine.
+- **2026-09-11 — sidecars are plain Tauri `resources` + `std::process::Command`,
+  not `externalBin`.** `externalBin` (Tauri's sidecar mechanism) expects one
+  self-contained binary named `<name>-<target-triple>(.exe)`; both halves
+  here are folder trees (PyInstaller `--onedir`'s DLLs/support files; the
+  standalone Next build's `.next/`, `node_modules/`, plus the portable
+  `node.exe`). Bundled instead as `bundle.resources` in `tauri.conf.json`,
+  spawned directly in `src-tauri/src/main.rs` via `std::process::Command`
+  against paths resolved from `app.path().resource_dir()`. No window is
+  created (`app.windows: []`) until both sidecars answer their health check,
+  polled from a background thread; the window is then built via
+  `WebviewWindowBuilder` on the main thread (`AppHandle::run_on_main_thread`)
+  pointed at the frontend sidecar's own `http://127.0.0.1:3100` — never
+  `tauri://localhost`, which resolved the Phase C open question about
+  `ALLOWED_ORIGINS` as a side effect (see Phase C above).
+- **2026-09-11 — the frozen-Chromium-install approach is written but is the
+  one piece of this whole plan with no independent confirmation it works.**
+  `entrypoint.py` calls `playwright.__main__.main(["install", "chromium"])`
+  in-process, relying on `pyinstaller-hooks-contrib`'s playwright hook to
+  have bundled the driver's Node runtime as an executable binary rather than
+  inert data (which would make it non-executable once frozen). This is the
+  documented community pattern, but it's never been run here — no Windows
+  box, and this specific interaction is exactly the kind of thing the
+  existing "will PyInstaller `--onedir` work cleanly" open question already
+  flagged as answerable only by attempting Phase B for real.
+- **2026-09-11 — Rust code was `cargo check`-able on Linux, PyInstaller's
+  output was not.** Installed a local Rust toolchain (rustup, stable) and
+  the Linux GTK/webkit2gtk/dbus dev packages Tauri needs even just to
+  typecheck, and got a clean `cargo check` for `src-tauri` — real coverage
+  for `main.rs`'s own logic (process spawning, health polling, window
+  creation, shutdown), though not for the Windows-specific NSIS bundle step,
+  which only CI can exercise. PyInstaller has no equivalent local check at
+  all: it doesn't cross-compile, so `casebook.spec` and `entrypoint.py` are
+  syntax-checked only, not run, until the workflow does.

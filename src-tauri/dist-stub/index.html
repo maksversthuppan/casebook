@@ -1,0 +1,12 @@
+<!doctype html>
+<!--
+  Never actually shown. `app.windows` is empty in tauri.conf.json - the real
+  window is created in src/main.rs, pointed at the frontend sidecar's own
+  URL, only once both sidecars answer their health check. `build.frontendDist`
+  just needs to point somewhere for `tauri build` to run; this stub keeps
+  that "somewhere" a single small file instead of the actual Next.js output
+  under resources/frontend (which is bundled separately, as a resource, for
+  the sidecar to run from - embedding it here too would duplicate it).
+-->
+<title>Casebook</title>
+<p>Starting Casebook&hellip;</p>

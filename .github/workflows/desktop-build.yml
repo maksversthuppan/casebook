@@ -1,0 +1,119 @@
+name: Desktop build (Windows)
+
+# Manual only, for now. This is the Windows box Phase B/C need and this dev
+# machine can't provide (docs/desktop-app-roadmap.md) - it produces a private
+# test build for the one person testing it, not the public auto-update
+# artifact Phase D will add later. The installer is downloaded from this
+# workflow's own Actions artifact, never posted anywhere public
+# (docs/desktop-app-plan.md, "Security note").
+on:
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "20"
+  # Must match src-tauri/src/main.rs's BACKEND_PORT/FRONTEND_PORT exactly -
+  # nothing derives one from the other.
+  BACKEND_PORT: "8743"
+  FRONTEND_PORT: "3100"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: astral-sh/setup-uv@v3
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend (standalone output)
+        working-directory: frontend
+        env:
+          # Baked into the Tauri window's rewrite config at build time
+          # (frontend/next.config.ts reads this at build, not at request
+          # time) - see docs/desktop-app-roadmap.md Findings, 2026-08-11.
+          BACKEND_URL: http://127.0.0.1:${{ env.BACKEND_PORT }}
+        run: npm run build
+
+      - name: Assemble standalone output (public/, static/ aren't copied by next build)
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=frontend/.next/standalone
+          cp -r frontend/public "$out/public"
+          mkdir -p "$out/.next"
+          cp -r frontend/.next/static "$out/.next/static"
+
+      - name: Fetch a portable Node runtime for the frontend sidecar
+        shell: pwsh
+        run: |
+          $nodeVersion = (node --version).Trim()
+          $zipName = "node-$nodeVersion-win-x64.zip"
+          Invoke-WebRequest -Uri "https://nodejs.org/dist/$nodeVersion/$zipName" -OutFile node.zip
+          Expand-Archive -Path node.zip -DestinationPath .
+          Copy-Item "node-$nodeVersion-win-x64/node.exe" "frontend/.next/standalone/node.exe"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group desktop
+
+      - name: Bake this build's production settings
+        working-directory: backend
+        shell: bash
+        env:
+          DESKTOP_DATABASE_URL: ${{ secrets.DESKTOP_DATABASE_URL }}
+          DESKTOP_SESSION_SECRET: ${{ secrets.DESKTOP_SESSION_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DESKTOP_DATABASE_URL:-}" ] || [ -z "${DESKTOP_SESSION_SECRET:-}" ]; then
+            echo "::error::Repo secrets DESKTOP_DATABASE_URL and DESKTOP_SESSION_SECRET are not set. See docs/desktop-app-roadmap.md Phase B and backend/app/desktop/_defaults.example.py."
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          template = Path("app/desktop/_defaults.example.py").read_text()
+          out = template.replace(
+              '"postgresql+asyncpg://REPLACE_ME"', repr(os.environ["DESKTOP_DATABASE_URL"])
+          ).replace(
+              '"REPLACE_ME"', repr(os.environ["DESKTOP_SESSION_SECRET"]), 1
+          )
+          Path("app/desktop/_defaults.py").write_text(out)
+          PY
+
+      - name: Build backend (PyInstaller --onedir)
+        working-directory: backend
+        run: uv run --group desktop pyinstaller casebook.spec --noconfirm
+
+      - name: Assemble Tauri resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/resources
+          cp -r backend/dist/casebook-backend src-tauri/resources/backend
+          cp -r frontend/.next/standalone src-tauri/resources/frontend
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli@^2
+
+      - name: Build the Tauri app
+        working-directory: src-tauri
+        run: tauri build
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: casebook-windows-installer
+          path: |
+            src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.msi
+          if-no-files-found: error
