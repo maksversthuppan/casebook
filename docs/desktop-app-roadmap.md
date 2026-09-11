@@ -67,35 +67,45 @@ are actually hard.
 
 ## Phase B — Backend: packaged as a native process
 
-- [ ] PyInstaller `--onedir` spec for the FastAPI/uvicorn entrypoint —
-      written: `backend/casebook.spec`, entry `backend/app/desktop/entrypoint.py`.
-      Unverified — PyInstaller doesn't cross-compile, so this has only been
-      syntax-checked on Linux, never actually run
-- [ ] Bake this build's production settings as defaults: `DATABASE_URL`
+- [x] PyInstaller `--onedir` spec for the FastAPI/uvicorn entrypoint —
+      `backend/casebook.spec`, entry `backend/app/desktop/entrypoint.py`.
+      Verified with a Linux `--onedir` build (2026-09-12 Finding) after
+      fixing the `app.main` import bug the first real Windows attempt
+      surfaced - the frozen exe starts, installs Chromium, and answers
+      `/api/health`. Still not run through the actual Windows/NSIS path
+- [x] Bake this build's production settings as defaults: `DATABASE_URL`
       (Supabase session pooler), a real `SESSION_SECRET`, `DEBUG=false`,
       `ALLOWED_ORIGINS` (exact value blocked on the open question below) —
-      written: `.github/workflows/desktop-build.yml` generates
+      `.github/workflows/desktop-build.yml` generates
       `backend/app/desktop/_defaults.py` (gitignored) from repo secrets
       `DESKTOP_DATABASE_URL` / `DESKTOP_SESSION_SECRET` right before the
-      PyInstaller step; shape documented in `_defaults.example.py`. **Blocked
-      on those two secrets existing in the repo** — nobody has set them yet
-- [ ] Lazy Chromium install on first run — written in
+      PyInstaller step; shape documented in `_defaults.example.py`. Secrets
+      added to the repo 2026-09-12 - unverified that the values themselves
+      are correct until a build actually connects to Supabase with them
+- [x] Lazy Chromium install on first run — written in
       `entrypoint.py::_ensure_chromium`, using `PLAYWRIGHT_BROWSERS_PATH` +
       an in-process call to `playwright.__main__.main(["install", "chromium"])`
       (no real interpreter to `sys.executable -m playwright` inside a frozen
-      app). Relies on `pyinstaller-hooks-contrib`'s playwright hook to bundle
-      the driver's Node runtime as a binary, not just data — **unverified,
-      this is the single riskiest guess in Phase B**, flagged in the open
-      questions below rather than guessed further. No separate "Setting up…"
-      frontend state built — the window simply doesn't appear until the
-      health check passes (Phase C), so the delay reads as a slow launch,
-      not a stuck one; revisit only if that reads badly in practice
-- [ ] Confirm the frozen exe actually launches with every real dependency:
+      app), relying on `pyinstaller-hooks-contrib`'s playwright hook to
+      bundle the driver's Node runtime as a binary, not just data. **This was
+      Phase B's single riskiest guess, and it's now confirmed working** - the
+      2026-09-12 Linux `--onedir` test actually downloaded Chromium,
+      Chromium Headless Shell and FFmpeg through this exact path, and a
+      second run correctly skipped the download. Windows is still unverified
+      (different OS-level install/permissions behavior is possible), but the
+      core mechanism is sound. No separate "Setting up…" frontend state
+      built - the window simply doesn't appear until the health check passes
+      (Phase C), so the delay reads as a slow launch, not a stuck one;
+      revisit only if that reads badly in practice
+- [x] Confirm the frozen exe actually launches with every real dependency:
       `uvicorn`, SQLAlchemy + `asyncpg`, `argon2-cffi` (a C extension —
       exactly the kind of thing PyInstaller hidden-import bugs like to hide
-      in), Playwright's own subprocess-launching driver — best-guess
-      `hiddenimports` list written into `casebook.spec`; only a real Windows
-      run answers this
+      in), Playwright's own subprocess-launching driver — confirmed on Linux
+      (2026-09-12); the `hiddenimports` list in `casebook.spec` turned out to
+      not even be the load-bearing part (see Findings - the real bug was a
+      missing *real* import of `app.main` itself). Windows-specific DLL
+      issues (a different class of PyInstaller problem than missing Python
+      hidden imports) are still unverified
 - [x] Alembic is **not** bundled — confirmed nothing under `backend/app/`
       imports `alembic` (only `alembic.ini`/`migrations/` at the repo root do,
       and PyInstaller's entry point never touches them); `excludes=["alembic"]`
@@ -294,3 +304,31 @@ Record answers here as they're learned, with the date — same discipline as
   Neither would have surfaced without a real compiler in the loop - a good
   argument for not skipping this step on a future change to `src-tauri/`,
   even though it still can't validate the Windows-only bundle step.
+- **2026-09-12 — first real Windows build attempt, and it failed exactly as
+  expected: `Error loading ASGI app. Could not import module "app.main"`.**
+  Root cause: `entrypoint.py` called `uvicorn.run("app.main:app", ...)` - the
+  *string* form, which makes uvicorn import that module itself at runtime.
+  PyInstaller's static analysis (starting from `entrypoint.py`) never saw a
+  real `import` of `app.main` anywhere, so neither it nor anything FastAPI
+  related under it was ever bundled - `casebook.spec`'s `hiddenimports` for
+  the individual routers didn't help, because the parent module itself was
+  missing, not just some of its children. Fixed by importing the app object
+  directly (`from app.main import app as asgi_app`) and passing that object
+  to `uvicorn.run`, not a string.
+- **2026-09-12 — the fix was verified with a Linux `--onedir` build, not
+  guessed at.** PyInstaller doesn't cross-compile, but running
+  `uv run pyinstaller casebook.spec` **on Linux** exercises the exact same
+  import-discovery logic that broke on Windows, so it's a real test of the
+  fix, not just of "does this look right." Result, end to end: the frozen
+  exe started, `_ensure_chromium` correctly detected no existing install and
+  ran the real `playwright install chromium` path in-process (downloading
+  Chrome for Testing, Chrome Headless Shell, and FFmpeg without issue -
+  **this resolves Phase B's single riskiest open question**: the frozen
+  Chromium install genuinely works, at least via
+  `pyinstaller-hooks-contrib`'s playwright hook on this platform), then
+  uvicorn started and `/api/health` answered `200 {"status": "ok"}`. A
+  second run correctly skipped the download (found the existing
+  `chromium-*` directory) and went straight to trying to bind the port.
+  Windows-specific risks (DLLs, the NSIS bundle step, antivirus) are still
+  unverified - this only proves the *Python side* of Phase B is sound, on
+  any platform.

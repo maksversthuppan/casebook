@@ -88,7 +88,14 @@ def main() -> None:
 
     import uvicorn
 
-    uvicorn.run("app.main:app", host=HOST, port=PORT, log_level="info")
+    # A real import, not the string form ("app.main:app") - the string form
+    # makes uvicorn import the module itself at runtime, which PyInstaller's
+    # static analysis (starting from this file) can't see coming and so
+    # never bundles. This exact failure mode: "Error loading ASGI app. Could
+    # not import module 'app.main'." - app.main was never in the build.
+    from app.main import app as asgi_app
+
+    uvicorn.run(asgi_app, host=HOST, port=PORT, log_level="info")
 
 
 if __name__ == "__main__":
