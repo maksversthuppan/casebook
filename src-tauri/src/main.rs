@@ -40,8 +40,7 @@ struct Sidecars(Mutex<Option<(Child, Child)>>);
 fn wait_healthy(url: &str, deadline: Instant) -> bool {
     while Instant::now() < deadline {
         let got_200 = ureq::get(url)
-            .timeout_connect(Duration::from_secs(2))
-            .timeout_read(Duration::from_secs(2))
+            .timeout(Duration::from_secs(2))
             .call()
             .map(|resp| resp.status() == 200)
             .unwrap_or(false);
