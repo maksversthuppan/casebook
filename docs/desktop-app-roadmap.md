@@ -11,8 +11,9 @@ Tick items as they land, and add a line under *Findings* when reality
 contradicts an assumption — same discipline as the main `ROADMAP.md`, for the
 same reason: this is the memory between sessions.
 
-**Status: Phase A done (2026-08-11). Phases B, C and a first pass at D written
-(2026-09-11), unverified — nothing has actually run on Windows yet.**
+**Status: Phase A done (2026-08-11). Phases B and C now verified working on
+real Windows hardware (2026-09-12) — login succeeds end to end (frontend
+window → backend sidecar → Supabase) after four real build/fix rounds.**
 Architecture, technology choices, and the decisions behind them (Tauri over
 Docker Desktop, Windows-only, skip code-signing for v1, public releases repo)
 are recorded in `docs/desktop-app-plan.md`. B (PyInstaller) and C (Tauri
@@ -117,23 +118,30 @@ are actually hard.
       Tauri v2. `cargo check` passes on Linux (with the desktop GTK/dbus dev
       packages installed) — real coverage for the code's own logic, but not
       for the actual Windows bundle target, which only CI can build
-- [ ] Wire both sidecars — **not** `externalBin`: both the backend
+- [x] Wire both sidecars — **not** `externalBin`: both the backend
       (`--onedir`, many files) and the frontend (portable Node +
       the standalone folder tree) are folder trees, not the single
       self-contained binary `externalBin`/sidecar expects. Bundled instead
       as plain Tauri `resources` (`tauri.conf.json`) and spawned directly
       with `std::process::Command` in `src-tauri/src/main.rs` — a deliberate
-      deviation from this file's original wording, not an oversight
-- [ ] Startup sequence: launch both sidecars, poll the backend's
+      deviation from this file's original wording, not an oversight.
+      Confirmed working on real Windows hardware (2026-09-12): both
+      processes launch and the window shows a working login screen
+- [x] Startup sequence: launch both sidecars, poll the backend's
       `/api/health` and the frontend's root until both respond, then show the
       main window pointed at the frontend's local URL — written in
       `main.rs`; `app.windows` is empty in `tauri.conf.json` so no window
-      (and no connection-refused flash) exists before both checks pass
+      (and no connection-refused flash) exists before both checks pass.
+      Confirmed on real Windows hardware (2026-09-12) - the window only
+      appeared once both sidecars were actually healthy, login worked end
+      to end (DB query + argon2 + session cookie), through the real
+      frontend-proxies-to-backend path
 - [ ] Clean shutdown: both subprocesses killed when the window closes — no
       orphaned backend process left running after she quits, matching the
       "nothing outlives the process" discipline already in
       `backend/app/dcms/{session,browser}.py` — written, via `RunEvent::Exit`
-      in `main.rs`
+      in `main.rs`. Still not confirmed on real Windows - check Task Manager
+      for a lingering `casebook-backend.exe` after closing the app window
 - [x] Resolve the exact `ALLOWED_ORIGINS` value — resolved, and turns out
       not to matter much: the webview loads the frontend sidecar's own URL
       directly (`http://127.0.0.1:3100`, not `tauri://localhost`), and the
@@ -167,12 +175,15 @@ are actually hard.
 
 ## Phase E — First real Windows build and verification
 
-- [ ] First build attempt on actual Windows hardware — expected to surface
-      something the research didn't predict; a failed first attempt is the
-      expected case, not a sign of a wrong plan
+- [x] First build attempt on actual Windows hardware — surfaced four real
+      bugs across four rounds (a PyInstaller string-import gap, missing
+      `tzdata`, a bare `postgresql://` URL, and a Windows-specific DNS
+      resolution failure), exactly as expected - none were guessed at, each
+      was root-caused from a real traceback before being fixed
 - [ ] Full login → browse cases → live DCMS ingest, from the packaged app, on
-      her actual residential network — the check that answers whether the
-      entire pivot worked
+      her actual residential network — login is confirmed (2026-09-12);
+      browsing cases and a live ingest are still unconfirmed - this is the
+      check that answers whether the entire pivot worked
 - [ ] Ship one trivial change through the complete loop (build → public
       release → her app auto-updates) before relying on it for anything real
 - [ ] Decide the fate of the existing Render + Vercel deployment (open
@@ -434,3 +445,20 @@ Record answers here as they're learned, with the date — same discipline as
      guess. Root cause is still not confirmed as of this entry - this
      exists to get a definitive answer, not because the mechanism is known
      to be correct.
+- **2026-09-12 — confirmed: the IPv4 DNS fallback fixed it, on the actual
+  rebuilt app, not a standalone script.** Login succeeded end to end
+  (frontend window → backend sidecar → Supabase, through the real
+  frontend-proxies-to-backend request path) on the real Windows machine
+  after installing the build containing `_install_ipv4_fallback_dns`. This
+  is the fourth real bug this phase surfaced, and the only one that turned
+  out to be genuinely Windows-networking-specific rather than a PyInstaller
+  bundling gap - `getaddrinfo(family=AF_UNSPEC)` for this host does fail on
+  at least this machine's network stack, even though the OS's own
+  `GetAddrInfoW`-based tools (`Test-NetConnection`) resolve and connect
+  fine - a real, if not fully understood, discrepancy between how different
+  callers on the same Windows machine resolve the same hostname. The
+  mechanism was verified layer by layer rather than accepted on assertion:
+  the first proposed patch was proven dead code with a local repro before
+  it went anywhere near the repo; the shipped version was proven reachable
+  and safe with the same method before being trusted; and the final
+  confirmation came from the actual packaged app, not an isolated script.
