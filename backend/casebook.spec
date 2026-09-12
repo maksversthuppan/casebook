@@ -36,6 +36,13 @@ a = Analysis(
         "argon2",
         "_cffi_backend",
         "email_validator",
+        # zoneinfo's fallback for the IANA tz database (app/config.py's IST)
+        # is a dynamic import inside the stdlib, invisible to static
+        # analysis - the exact same class of bug as the app.main fix above,
+        # caught on the first real Windows run (docs/desktop-app-roadmap.md
+        # Findings, 2026-09-12). pyinstaller-hooks-contrib has a hook for it
+        # once it's listed here.
+        "tzdata",
         # FastAPI routers are imported by app.main, not discovered by name -
         # should already be picked up transitively, listed for safety since
         # this is the one thing Phase E can't cheaply re-verify without a

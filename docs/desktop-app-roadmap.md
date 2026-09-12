@@ -332,3 +332,31 @@ Record answers here as they're learned, with the date — same discipline as
   Windows-specific risks (DLLs, the NSIS bundle step, antivirus) are still
   unverified - this only proves the *Python side* of Phase B is sound, on
   any platform.
+- **2026-09-12 — second real Windows attempt, second real bug:
+  `ModuleNotFoundError: No module named 'tzdata'` /
+  `ZoneInfoNotFoundError: 'No time zone found with key Asia/Kolkata'` in
+  `app/config.py`'s `IST = ZoneInfo("Asia/Kolkata")`.** Root cause: Python's
+  `zoneinfo` looks for the IANA tz database on the OS first
+  (`/usr/share/zoneinfo` and friends), and only falls back to the `tzdata`
+  PyPI package if the OS doesn't have one. Linux and macOS ship one; Windows
+  doesn't - which is exactly why this never showed up in local testing here
+  or in the first Linux `--onedir` verification above. The fallback import
+  itself is also dynamic (inside `zoneinfo`'s own stdlib code), so even with
+  `tzdata` installed, PyInstaller's static analysis wouldn't have bundled it
+  without a `hiddenimports` entry - the same class of invisible-to-PyInstaller
+  import as the `app.main` string-import bug, twice in two attempts. Fixed by
+  adding `tzdata` to `backend/pyproject.toml`'s main dependencies (installed
+  on every platform, not just Windows, so this dev machine can build and test
+  identically to the real target) and `"tzdata"` to `casebook.spec`'s
+  `hiddenimports` (picked up by `pyinstaller-hooks-contrib`'s existing
+  `hook-tzdata.py` once listed).
+- **2026-09-12 — verified the tzdata fix by actually removing the condition
+  that was masking it, not by trusting the theory.** Windows' lack of a
+  system tz database was reproduced on this Linux dev machine with
+  `PYTHONTZPATH=""` (forces `zoneinfo` past the OS lookup and into the
+  `tzdata` package fallback - confirmed first with plain `python3`, then
+  with the actual frozen `--onedir` build). Rebuilt with the fix in place and
+  ran the frozen exe under `PYTHONTZPATH=""`: starts cleanly, `/api/health`
+  answers `200`. This is a stronger check than the first Linux verification
+  above, which happened to not exercise this code path at all because Linux
+  has its own tzdata and never needed the fallback.

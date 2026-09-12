@@ -14,6 +14,12 @@ dependencies = [
     "argon2-cffi>=23.1",
     "itsdangerous>=2.2",
     "playwright>=1.62.0",
+    # zoneinfo (app/config.py's IST) falls back to this for the IANA tz
+    # database on any OS without one of its own - transparently true on
+    # Linux/Mac (which already have /usr/share/zoneinfo) but not Windows,
+    # which has none. Installed everywhere rather than Windows-only so this
+    # dev machine can build and test the frozen app identically.
+    "tzdata>=2024.1",
 ]
 
 [dependency-groups]
