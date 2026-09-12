@@ -6,12 +6,30 @@ every time (ADR-0003).
 """
 
 import logging
+import re
 
 from playwright.async_api import Page
 
 from app.models.enums import SearchMode
 
 log = logging.getLogger(__name__)
+
+_WHITESPACE_RUN = re.compile(r"\s+")
+
+
+def _normalize_ws(text: str) -> str:
+    """Collapse internal whitespace runs the way a browser renders them.
+
+    A live case (2026-09-12): selecting a court option raised "did not take"
+    even though the option text and the field's read-back value looked
+    identical once displayed. `.strip()` only trims the ends - it doesn't
+    catch the portal's own markup and the input's value disagreeing on
+    *internal* whitespace (e.g. a doubled space), which HTML rendering
+    collapses to one space for display either way, hiding the difference
+    from whoever is looking at the page (or reading our error message
+    rendered as HTML) even though a plain `==` still sees it.
+    """
+    return _WHITESPACE_RUN.sub(" ", text)
 
 CASE_SEARCH_URL = "https://filing.keralacourts.in/caseSearch"
 
@@ -137,7 +155,7 @@ async def _choose(page: Page, placeholder: str, wanted: str) -> str:
     # than submitting a search the portal will treat as a different, blank
     # field.
     actual = (await box.input_value()).strip()
-    if actual != match.strip():
+    if _normalize_ws(actual) != _normalize_ws(match):
         raise PortalError(
             f"Selecting {match!r} for {placeholder!r} did not take - the "
             f"field reads {actual!r} instead."
