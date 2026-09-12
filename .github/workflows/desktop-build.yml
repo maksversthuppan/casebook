@@ -1,12 +1,25 @@
 name: Desktop build (Windows)
 
-# Manual only, for now. This is the Windows box Phase B/C need and this dev
-# machine can't provide (docs/desktop-app-roadmap.md) - it produces a private
-# test build for the one person testing it, not the public auto-update
-# artifact Phase D will add later. The installer is downloaded from this
-# workflow's own Actions artifact, never posted anywhere public
-# (docs/desktop-app-plan.md, "Security note").
+# This is the Windows box Phase B/C need and this dev machine can't provide
+# (docs/desktop-app-roadmap.md) - it produces a private test build for the
+# one person testing it, not the public auto-update artifact Phase D will
+# add later. The installer is downloaded from this workflow's own Actions
+# artifact, never posted anywhere public (docs/desktop-app-plan.md,
+# "Security note").
+#
+# Runs automatically on pushes that touch the app itself, not on every push
+# to main (windows-latest runner minutes count double against the Actions
+# free quota) - a docs-only or backend-office-app commit shouldn't spend
+# them. `workflow_dispatch` stays too, for a manual re-run without a new
+# commit.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "src-tauri/**"
+      - ".github/workflows/desktop-build.yml"
   workflow_dispatch:
 
 env:
