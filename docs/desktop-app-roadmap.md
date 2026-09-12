@@ -360,3 +360,31 @@ Record answers here as they're learned, with the date — same discipline as
   answers `200`. This is a stronger check than the first Linux verification
   above, which happened to not exercise this code path at all because Linux
   has its own tzdata and never needed the fallback.
+- **2026-09-12 — third real Windows attempt, third real bug:
+  `ModuleNotFoundError: No module named 'psycopg2'` at engine creation.**
+  Root cause, confirmed by reproducing it directly (not just read off the
+  traceback): `create_async_engine()` picks its DBAPI from the URL's driver
+  suffix - a bare `postgresql://` (no `+asyncpg`) resolves to psycopg2,
+  which this app never installs (async-only throughout). `DESKTOP_DATABASE_URL`
+  almost certainly came from Supabase's dashboard as a plain `postgresql://`
+  URI - there's no reason whoever pasted it in would know SQLAlchemy's
+  `+asyncpg` convention, since it isn't part of a standard postgres URI. Fixed
+  with a `pydantic` `field_validator` on `Settings.database_url` that
+  normalizes a bare `postgresql://`/`postgres://` to `postgresql+asyncpg://`
+  - at the boundary, so it protects every deployment (office server, Render,
+  this desktop build), not just the one secret that tripped it.
+- **2026-09-12 — the most thorough verification pass yet: a real login, not
+  just `/api/health`.** All three bugs so far were invisible to a bare health
+  check (it touches neither the DB nor auth), so this round rebuilt the
+  frozen exe, pointed it at the local docker-compose Postgres with a
+  deliberately bare `postgresql://` URL (to reproduce the exact failure
+  mode), and drove real HTTP requests against it: `/api/auth/login` (DB
+  query + argon2 password verify + session cookie signing),
+  `/api/auth/me` (reading that session back) - both succeeded, still under
+  `PYTHONTZPATH=""`. Also called `/api/ingest/start` to check the other
+  named Phase B risk (Playwright actually *launching* Chromium as a
+  subprocess, not just installing it, a different code path) - it launched
+  fine, though this call turned out to also navigate to the real DCMS portal
+  (`portal.open_search`, not visible from `registry.open()` alone), an
+  unintended live request from an automated test that should not be repeated
+  - use `/api/auth/*` for future smoke tests, not `/api/ingest/start`.
