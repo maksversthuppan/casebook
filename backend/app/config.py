@@ -2,6 +2,7 @@ from datetime import date, datetime
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: Every date in this system is a Kerala calendar date - a hearing is listed on
@@ -30,6 +31,26 @@ class Settings(BaseSettings):
     # calls the backend directly (frontend/next.config.ts proxies /api/*), so
     # this only matters for someone hitting the backend origin straight on.
     allowed_origins: str = "http://localhost:3000"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _require_asyncpg_driver(cls, value: str) -> str:
+        """Normalize a bare `postgresql://`/`postgres://` URL to asyncpg.
+
+        The app is async-only (`create_async_engine` in `app/db.py`), which
+        needs the `+asyncpg` driver in the URL to pick the right SQLAlchemy
+        dialect - without it, SQLAlchemy defaults to psycopg2 (never
+        installed here; it's sync-only) and fails at engine creation with
+        `ModuleNotFoundError: No module named 'psycopg2'`. Whoever pastes a
+        connection string in - a Supabase dashboard, a repo secret - has no
+        reason to know this SQLAlchemy-specific convention, since it isn't
+        part of a standard postgres URI; normalizing here means a plain
+        connection string just works instead of failing at engine creation.
+        """
+        for prefix in ("postgresql://", "postgres://"):
+            if value.startswith(prefix):
+                return "postgresql+asyncpg://" + value[len(prefix) :]
+        return value
 
     @property
     def allowed_origins_list(self) -> list[str]:
