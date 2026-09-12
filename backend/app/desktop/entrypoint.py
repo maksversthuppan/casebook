@@ -11,14 +11,64 @@ Responsibilities `uv run uvicorn app.main:app` doesn't have, in order:
    process the Tauri shell launches and health-checks).
 """
 
+import asyncio
+import logging
 import os
+import socket
 import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 #: 127.0.0.1 only - the Tauri window is the only client, and nothing here
 #: should be reachable from the rest of the friend's home network.
 HOST = "127.0.0.1"
 PORT = 8743
+
+
+def _install_ipv4_fallback_dns() -> None:
+    """Retry a failed DNS resolution with IPv4 only, Windows only.
+
+    Unverified, instrumented fix for a login failure a real Windows build hit
+    connecting to Supabase's pooler (`getaddrinfo failed`, WSAGetLastError
+    11004/WSANO_DATA) - see docs/desktop-app-roadmap.md Findings, 2026-09-12+,
+    for the investigation. Root cause is not confirmed; Windows Defender was
+    ruled out, but why this machine's dual-stack resolution would fail for a
+    host with A records and no AAAA records, when the OS's own resolver
+    (`Test-NetConnection`) resolves and connects fine, is not understood -
+    this exists to gather real evidence, not because the mechanism is
+    verified.
+
+    Every real event loop (`ProactorEventLoop` included) gets `getaddrinfo`
+    from `BaseEventLoop`, not the `AbstractEventLoop` interface - patching
+    the wrong one is a real mistake that was made and caught here (proved
+    with a local repro: the patched function was simply never called).
+    Falls back only on an actual `OSError` from the original, unmodified
+    call, so a machine where resolution already works sees no behavior
+    change at all - confirmed locally the normal case still returns both
+    address families untouched.
+    """
+    if sys.platform != "win32":
+        return
+
+    original = asyncio.base_events.BaseEventLoop.getaddrinfo
+
+    async def _ipv4_fallback(self, host, port, *, family=0, type=0, proto=0, flags=0):
+        try:
+            return await original(self, host, port, family=family, type=type, proto=proto, flags=flags)
+        except OSError:
+            if family != 0:
+                raise
+            log.warning(
+                "getaddrinfo(%r, family=AF_UNSPEC) failed - retrying with "
+                "AF_INET only (docs/desktop-app-roadmap.md Findings)",
+                host,
+            )
+            return await original(
+                self, host, port, family=socket.AF_INET, type=type, proto=proto, flags=flags
+            )
+
+    asyncio.base_events.BaseEventLoop.getaddrinfo = _ipv4_fallback
 
 
 def _browsers_path() -> Path:
@@ -68,6 +118,7 @@ def _ensure_chromium() -> None:
 
 
 def main() -> None:
+    _install_ipv4_fallback_dns()
     _ensure_chromium()
 
     # Side-effecting import: sets os.environ defaults for DATABASE_URL,

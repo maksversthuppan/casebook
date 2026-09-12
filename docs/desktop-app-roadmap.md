@@ -388,3 +388,49 @@ Record answers here as they're learned, with the date — same discipline as
   (`portal.open_search`, not visible from `registry.open()` alone), an
   unintended live request from an automated test that should not be repeated
   - use `/api/auth/*` for future smoke tests, not `/api/ingest/start`.
+- **2026-09-12 — fourth Windows attempt (after re-baking with a rotated DB
+  password): `socket.gaierror: [Errno 11004] getaddrinfo failed` connecting
+  to the Supabase pooler.** Not a PyInstaller bundling bug this time - real
+  Windows-networking territory. Evidence gathered before touching any code,
+  in order: `nslookup` resolved the host fine; `Test-NetConnection
+  aws-0-ap-south-1.pooler.supabase.com -Port 5432` (uses the same OS
+  `GetAddrInfoW` path a normal process would) resolved *and* connected on
+  port 5432 without issue; Windows Security showed no Protection History
+  entry for `casebook-backend.exe`; disabling Real-Time Protection entirely
+  and retrying did not change the outcome. So the OS can resolve and connect
+  to this exact host on this exact machine - only the frozen process
+  couldn't. Root cause is **not confirmed** as of this entry.
+- **2026-09-12 — a proposed "definitive fix" from another AI agent (with
+  installed-build-only access) was checked, not trusted, and disproved.** It
+  patched `asyncio.AbstractEventLoop.getaddrinfo`, framed as forcing
+  IPv4-only resolution. Verified directly (not just reasoned about) that
+  this is dead code: every real event loop (`ProactorEventLoop` included)
+  gets `getaddrinfo` from `asyncio.base_events.BaseEventLoop`, which defines
+  its own copy - `AbstractEventLoop`'s version is never consulted.
+  Reproduced this locally: patched `AbstractEventLoop.getaddrinfo` with a
+  version that prints when called, ran a real resolution through
+  `asyncio.run()`, and the print never fired while both address families
+  still came back untouched. The stated mechanism ("PyInstaller changes how
+  family=0 is handled") also doesn't hold up - freezing doesn't alter
+  runtime bytecode behavior of stdlib calls; identical code runs either way.
+- **2026-09-12 — a corrected, instrumented, Windows-only fallback shipped
+  instead - unverified but safe, not asserted as the fix.** Written in
+  `entrypoint.py::_install_ipv4_fallback_dns` (called from `main()`, guarded
+  by `sys.platform == "win32"`, so Render/the office server/this dev machine
+  are entirely unaffected). Differs from the disproved patch in three ways,
+  each locally verified before shipping:
+  1. Patches `asyncio.base_events.BaseEventLoop.getaddrinfo` - confirmed
+     reachable, unlike the dead-code version, with the same
+     print-fires-or-doesn't test that caught the original bug.
+  2. Only retries with `AF_INET` *after* the real call raises `OSError` -
+     confirmed the normal/working case is completely untouched (still
+     returns both address families) rather than blindly forcing IPv4
+     everywhere, forever, for every host.
+  3. Logs clearly when the fallback path is taken, so the next real Windows
+     attempt gives an unambiguous answer either way: if the log never
+     appears, the dual-stack theory is wrong and something else is going on;
+     if it appears and login still fails, IPv4-forcing isn't the fix either;
+     if it appears and login succeeds, that's real confirmation, not a
+     guess. Root cause is still not confirmed as of this entry - this
+     exists to get a definitive answer, not because the mechanism is known
+     to be correct.
