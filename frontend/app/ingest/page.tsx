@@ -761,16 +761,18 @@ export default function IngestPage() {
               {result.raw_length.toLocaleString()} characters. It is kept whatever happens next.
             </Banner>
 
-            <p className="max-w-2xl text-[0.8125rem] leading-relaxed text-ink-soft">
-              Reading a case out of this response is the next piece of work. The parser has to be
-              written against a real payload rather than a guessed one, and this is the first.
-            </p>
+            {!result.extracted && !result.parse_error && (
+              <Banner kind="note">
+                No case was found for that search. Check the identifier (and, for a Case
+                No search, the case type and year) and try again.
+              </Banner>
+            )}
 
             {result.parse_error && (
               <Banner kind="error">Could not decode it: {result.parse_error}</Banner>
             )}
 
-            <details className="border-t border-rule-strong pt-3" open>
+            <details className="border-t border-rule-strong pt-3" open={!!result.parse_error}>
               <summary className="label cursor-pointer text-ink">
                 What came back (first 4,000 characters)
               </summary>
