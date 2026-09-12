@@ -102,7 +102,9 @@ export default function IngestPage() {
   const [court, setCourt] = useState("");
   const [chosen, setChosen] = useState<ChooseCourtOut | null>(null);
 
-  const [mode, setMode] = useState<SearchMode>("cnr");
+  // Case No is what an advocate normally has in hand when starting from
+  // scratch; the CNR is what the portal teaches once a case is found.
+  const [mode, setMode] = useState<SearchMode>("case_number");
   const [value, setValue] = useState("");
   const [caseType, setCaseType] = useState("");
   const [year, setYear] = useState("");
@@ -125,6 +127,11 @@ export default function IngestPage() {
 
   const [attempt, setAttempt] = useState(0);
   const sidRef = useRef<string | null>(null);
+
+  // Asked for, not assumed: whether to change the district/court once past
+  // the identifier step. Confirmed inline rather than in a popup, the same
+  // way Disclosure expands in place instead of a modal.
+  const [confirmRestart, setConfirmRestart] = useState(false);
 
   useEffect(() => {
     api
@@ -247,13 +254,18 @@ export default function IngestPage() {
       const out = await ingest.submit(sid, code);
       setResult(out);
       setClientSide(null);
-      setPetitionerParty(null);
-      setRespondentParty(null);
+      const extracted = out.extracted;
+      setPetitionerParty(
+        extracted?.petitioner ? defaultPartyChoice(extracted.petitioner.name) : null,
+      );
+      setRespondentParty(
+        extracted?.respondent ? defaultPartyChoice(extracted.respondent.name) : null,
+      );
       setPetitionerOtherParties(
-        out.extracted ? out.extracted.petitioner_others.map(() => null) : [],
+        extracted ? extracted.petitioner_others.map((p) => defaultPartyChoice(p.name)) : [],
       );
       setRespondentOtherParties(
-        out.extracted ? out.extracted.respondent_others.map(() => null) : [],
+        extracted ? extracted.respondent_others.map((p) => defaultPartyChoice(p.name)) : [],
       );
       // A search that found nothing has nothing to review - show it raw, same
       // as a parse failure would, rather than opening an empty review form.
@@ -267,6 +279,47 @@ export default function IngestPage() {
 
   function partySpec(choice: PartyChoice) {
     return choice.party_id ? { party_id: choice.party_id } : { new_party: choice.new_party };
+  }
+
+  // The portal's own name, ready to create as a new Party without an extra
+  // click - "change" still reaches the search-or-link picker for whoever
+  // isn't a stranger to the firm. Never a silent link to an existing Party:
+  // that choice stays the advocate's (ROADMAP, "Party linking", 2026-08-09).
+  function defaultPartyChoice(name: string): PartyChoice {
+    return { new_party: { name, kind: "person" }, label: name };
+  }
+
+  // Changing the district or court once past the identifier step means
+  // closing this Playwright session and opening a fresh one - the portal
+  // has no "go back" of its own (Findings, 2026-08-05: nothing is
+  // searchable before a court is chosen). Anything already searched stays
+  // safe regardless: a Snapshot is stored the moment it arrives, before
+  // this session is asked to close (rule 3).
+  function startOver() {
+    if (sid) void ingest.cancel(sid).catch(() => {});
+    setSid(null);
+    setDistricts([]);
+    setDistrict("");
+    setCourts([]);
+    setCourt("");
+    setChosen(null);
+    setMode("case_number");
+    setValue("");
+    setCaseType("");
+    setYear("");
+    setCaptcha(null);
+    setCode("");
+    setResult(null);
+    setClientSide(null);
+    setPetitionerParty(null);
+    setRespondentParty(null);
+    setPetitionerOtherParties([]);
+    setRespondentOtherParties([]);
+    setFirmStatus("active");
+    setError(null);
+    setConfirmRestart(false);
+    setStep("court");
+    setAttempt((a) => a + 1);
   }
 
   async function submitReview(e: React.FormEvent) {
@@ -332,6 +385,28 @@ export default function IngestPage() {
         {error && (
           <div className="mb-6 max-w-2xl">
             <Banner kind="error">{error}</Banner>
+          </div>
+        )}
+
+        {confirmRestart && (
+          <div className="mb-6 max-w-2xl">
+            <Banner kind="caution">
+              <p>
+                Starting over closes this DCMS session and opens a new one at the district/court
+                step — the CAPTCHA and anything typed here is lost.{" "}
+                {result
+                  ? "The search already made is kept regardless, as a Snapshot, whether or not you come back to it."
+                  : "Nothing has been searched yet, so there is nothing else to lose."}
+              </p>
+              <div className="mt-3 flex gap-3">
+                <button onClick={startOver} className="btn btn-quiet">
+                  Yes, start over
+                </button>
+                <button onClick={() => setConfirmRestart(false)} className="btn-plain">
+                  Cancel
+                </button>
+              </div>
+            </Banner>
           </div>
         )}
 
@@ -534,6 +609,13 @@ export default function IngestPage() {
                   className="btn btn-quiet"
                 >
                   Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmRestart(true)}
+                  className="btn-plain ml-auto"
+                >
+                  Wrong court? Start over
                 </button>
               </div>
             </form>
@@ -741,12 +823,19 @@ export default function IngestPage() {
                 </Field>
               </Sheet>
 
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <button disabled={busy} className="btn btn-primary">
                   {busy ? "Creating…" : "Create case"}
                 </button>
                 <button type="button" onClick={() => setStep("done")} className="btn btn-quiet">
                   Skip — just keep the snapshot
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmRestart(true)}
+                  className="btn-plain ml-auto"
+                >
+                  Wrong court or case? Start over
                 </button>
               </div>
             </form>

@@ -148,6 +148,30 @@ export function PageHead({
   );
 }
 
+/** Re-fetches the page's own data from the server. Distinct from "Refresh from
+ *  DCMS": that is a deliberate, CAPTCHA-gated act against the court's portal
+ *  (CONTEXT.md, "Refresh"), while this is only "read what's already here
+ *  again", for when a page glitched or another advocate changed something. */
+export function ReloadButton({
+  onReload,
+  busy = false,
+}: {
+  onReload: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onReload}
+      disabled={busy}
+      title="Reload this page's own data — not a Refresh from DCMS"
+      className="btn btn-quiet"
+    >
+      {busy ? "Reloading…" : "Reload"}
+    </button>
+  );
+}
+
 /** A section of a page. Announced by a small-caps label over a rule, the way a
  *  law report announces one — not drawn as a box floating on grey. */
 export function Sheet({

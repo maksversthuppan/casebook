@@ -72,9 +72,12 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="casebook-backend",
-    # Keeps a console so the "Setting up (first run only)..." print in
-    # entrypoint.py is visible during the one-time Chromium download.
-    console=True,
+    # No console window: src-tauri/src/main.rs redirects this process's
+    # stdout/stderr to a log file at spawn time (real file handles, not an
+    # inherited console), and shows startup progress - including the
+    # first-run "Setting up..." wait entrypoint.py used to print - in its own
+    # splash window instead, read from entrypoint.py's status file.
+    console=False,
 )
 
 coll = COLLECT(

@@ -151,6 +151,61 @@ are actually hard.
       `_defaults.example.py` as a reasonable value for anything that does
       hit the backend directly, but nothing in the normal request path needs
       it to be exactly right
+- [ ] **Hide both sidecar console windows; log to files; splash screen with
+      real startup progress.** Written 2026-09-12, **not yet run on Windows**.
+      Once both sidecars were confirmed working, they turned out to each pop
+      their own console window (backend: `casebook.spec` had `console=True`
+      on purpose, see below; frontend: `node.exe` gets one auto-allocated by
+      Windows same as any console-subsystem child launched without one) —
+      unwanted now that the app is a real desktop app for someone other than
+      whoever's debugging it. Changed together because they're one problem:
+      - `casebook.spec`: `console=True` → `console=False`. Its old job (a
+        place for entrypoint.py's "Setting up (first run only)..." print to
+        go) is now done by the two things below instead.
+      - `main.rs` spawns both sidecars with `CREATE_NO_WINDOW` (Windows-only,
+        gated behind `#[cfg(target_os = "windows")]` with a no-op stub
+        elsewhere so `cargo check` still runs here) **and** with
+        stdout/stderr redirected to real files
+        (`%LOCALAPPDATA%\casebook\logs\{backend,frontend}.log`, truncated
+        each run). The file redirection isn't only for logging: a
+        windows-subsystem PyInstaller build's `sys.stdout`/`sys.stderr` can
+        come back `None` when launched with no console and no handles at
+        all — a well-known PyInstaller footgun — and the first `print()` or
+        uvicorn log line would then crash the whole backend. Giving it real
+        file handles at spawn time avoids that class of bug entirely rather
+        than working around it in Python.
+      - A splash window (`dist-stub/splash.html`, opened via
+        `WebviewUrl::App`, not the frontend sidecar) is created immediately
+        in `setup()`, before either sidecar spawns, since otherwise nothing
+        is on screen at all during a first run's Chromium download (which
+        can take minutes). `entrypoint.py` gained `_write_status()`, writing
+        one line to `%LOCALAPPDATA%\casebook\status.txt` at each real
+        milestone (start, Chromium download, server start) — the only
+        channel available before uvicorn can answer `/api/health`. `main.rs`
+        polls that file on the same cadence as the existing health-check
+        loop and pushes it into the splash via `WebviewWindow::eval` (run
+        from the Rust host side against the webview, not the reverse, so it
+        needs no capability grant and no bundled `@tauri-apps/api`). A normal
+        run (Chromium already installed) just flashes through the same
+        states quickly — no separate "first run" code path to keep in sync.
+      - On a startup failure, the splash is **not** torn down by
+        `handle.exit()` — that would hide the error along with everything
+        else. It's left open with the failure message `eval`'d into it
+        instead, decorated (a real title bar) specifically so there's a way
+        to close it; the app quits once she does, via Tauri's normal
+        last-window-closes behaviour.
+
+      Verified: `cargo check` passes on Linux (same as Phase C's original
+      scaffold). **Not verified**: an attempt to cross-check the
+      `#[cfg(target_os = "windows")]` branch via
+      `cargo check --target x86_64-pc-windows-msvc` got as far as resolving
+      every dependency before failing on a missing MSVC `lib.exe` — real
+      confirmation that nothing about the *dependency graph* is Windows-only
+      broken, but no coverage at all for the `CREATE_NO_WINDOW`/`creation_flags`
+      line itself, PyInstaller's actual behaviour under `console=False`, or
+      whether the splash reads and clears in the right order in practice.
+      Same shape of risk as every other Windows-only change so far in this
+      file — needs a real Windows build and a real first run to confirm.
 
 ## Phase D — Auto-update
 

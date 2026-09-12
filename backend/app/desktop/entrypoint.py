@@ -71,17 +71,39 @@ def _install_ipv4_fallback_dns() -> None:
     asyncio.base_events.BaseEventLoop.getaddrinfo = _ipv4_fallback
 
 
-def _browsers_path() -> Path:
-    r"""Where Chromium lives for this install, persistent across app updates.
-
-    ``%LOCALAPPDATA%\casebook\ms-playwright`` on Windows - the only shipped
-    target (Rule 6). Falls back to a dotfile under the home directory so this
-    module still runs for manual smoke-testing on a non-Windows dev machine.
+def _appdata_dir() -> Path:
+    r"""``%LOCALAPPDATA%\casebook`` on Windows - the only shipped target
+    (Rule 6). Falls back to a dotfile under the home directory so this module
+    still runs for manual smoke-testing on a non-Windows dev machine. Shared
+    by `_browsers_path` below and the status file `_write_status` writes -
+    same convention, same folder.
     """
     local_appdata = os.environ.get("LOCALAPPDATA")
     if local_appdata:
-        return Path(local_appdata) / "casebook" / "ms-playwright"
-    return Path.home() / ".casebook" / "ms-playwright"
+        return Path(local_appdata) / "casebook"
+    return Path.home() / ".casebook"
+
+
+def _browsers_path() -> Path:
+    """Where Chromium lives for this install, persistent across app updates."""
+    return _appdata_dir() / "ms-playwright"
+
+
+def _status_path() -> Path:
+    """One line of plain text, overwritten as startup progresses.
+
+    Polled from `src-tauri/src/main.rs`'s splash screen while neither sidecar
+    is healthy yet - the only channel available before uvicorn can answer
+    `/api/health`, since a first-run Chromium download can take minutes.
+    Not a log: `_write_status` always replaces it, never appends.
+    """
+    return _appdata_dir() / "status.txt"
+
+
+def _write_status(message: str) -> None:
+    path = _status_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(message, encoding="utf-8")
 
 
 def _ensure_chromium() -> None:
@@ -96,6 +118,7 @@ def _ensure_chromium() -> None:
         return
 
     print("Setting up (first run only)...", flush=True)
+    _write_status("Setting up (first run only) — downloading the browser component…")
     browsers_path.mkdir(parents=True, exist_ok=True)
 
     # The `playwright install` CLI, called in-process rather than via
@@ -118,6 +141,7 @@ def _ensure_chromium() -> None:
 
 
 def main() -> None:
+    _write_status("Starting Casebook…")
     _install_ipv4_fallback_dns()
     _ensure_chromium()
 
@@ -146,6 +170,7 @@ def main() -> None:
     # not import module 'app.main'." - app.main was never in the build.
     from app.main import app as asgi_app
 
+    _write_status("Starting the local server…")
     uvicorn.run(asgi_app, host=HOST, port=PORT, log_level="info")
 
 

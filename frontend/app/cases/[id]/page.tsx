@@ -10,6 +10,7 @@ import {
   FirmStatusTag,
   PageHead,
   Provenance,
+  ReloadButton,
   Sheet,
   Waiting,
 } from "@/app/components/Chrome";
@@ -51,27 +52,42 @@ export default function CaseDetailPage() {
   // Recording a hearing changes the case's derived next hearing date, so the
   // header has to be refetched when the timeline changes.
   const [reloadKey, setReloadKey] = useState(0);
+  const [reloading, setReloading] = useState(false);
 
   useEffect(() => {
     // Guarded so that moving quickly between cases cannot let a slow earlier
-    // response overwrite the one being looked at.
+    // response overwrite the one being looked at. Kicked off via setTimeout,
+    // not a direct call, so the effect body itself never sets state
+    // synchronously.
     let cancelled = false;
-    api
-      .case(id)
-      .then((data) => {
-        if (!cancelled) setCase(data);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Could not load the case");
-        }
-      });
+    const t = setTimeout(() => {
+      setReloading(true);
+      api
+        .case(id)
+        .then((data) => {
+          if (!cancelled) {
+            setCase(data);
+            setError(null);
+          }
+        })
+        .catch((e: unknown) => {
+          if (!cancelled) {
+            setError(e instanceof Error ? e.message : "Could not load the case");
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setReloading(false);
+        });
+    }, 0);
     return () => {
       cancelled = true;
+      clearTimeout(t);
     };
   }, [id, reloadKey]);
 
-  if (error) {
+  // Only the first load has nothing to show yet - a reload that fails leaves
+  // the case already on screen in place, with the error said inline below.
+  if (error && !c) {
     return (
       <Chrome>
         <Banner kind="error">{error}</Banner>
@@ -115,23 +131,26 @@ export default function CaseDetailPage() {
           )
         }
         action={
-          canRefresh ? (
-            <Link href={`/cases/${id}/refresh`} className="btn btn-primary">
-              Refresh from DCMS
-            </Link>
-          ) : (
-            <button
-              disabled
-              title={
-                c.court.is_complete
-                  ? "A refresh searches by CNR, and this case has no CINO yet."
-                  : "This court has not been identified on the DCMS portal yet."
-              }
-              className="btn btn-quiet"
-            >
-              Refresh from DCMS
-            </button>
-          )
+          <>
+            <ReloadButton onReload={() => setReloadKey((k) => k + 1)} busy={reloading} />
+            {canRefresh ? (
+              <Link href={`/cases/${id}/refresh`} className="btn btn-primary">
+                Refresh from DCMS
+              </Link>
+            ) : (
+              <button
+                disabled
+                title={
+                  c.court.is_complete
+                    ? "A refresh searches by CNR, and this case has no CINO yet."
+                    : "This court has not been identified on the DCMS portal yet."
+                }
+                className="btn btn-quiet"
+              >
+                Refresh from DCMS
+              </button>
+            )}
+          </>
         }
       >
         <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -145,6 +164,12 @@ export default function CaseDetailPage() {
           {c.firm_status === "relinquished" && <FirmStatusTag status={c.firm_status} loud />}
         </div>
       </PageHead>
+
+      {error && (
+        <div className="mb-6">
+          <Banner kind="error">{error}</Banner>
+        </div>
+      )}
 
       {!c.court.is_complete && (
         <div className="mb-6">

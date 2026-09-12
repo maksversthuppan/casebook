@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { Banner, Chrome, FirmStatusTag, PageHead, Waiting } from "@/app/components/Chrome";
+import {
+  Banner,
+  Chrome,
+  FirmStatusTag,
+  PageHead,
+  ReloadButton,
+  Waiting,
+} from "@/app/components/Chrome";
 import {
   FIRM_STATUS_LABEL,
   api,
@@ -85,8 +92,10 @@ export default function CasesPage() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<FirmStatus | "all">("active");
   const [mine, setMine] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
+    setBusy(true);
     try {
       setError(null);
       const firm_status = status === "all" ? undefined : status;
@@ -102,6 +111,8 @@ export default function CasesPage() {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load cases");
+    } finally {
+      setBusy(false);
     }
   }, [q, status, mine]);
 
@@ -116,9 +127,12 @@ export default function CasesPage() {
         eyebrow={<span className="label">The register</span>}
         title="Cases"
         action={
-          <Link href="/cases/new" className="btn btn-primary">
-            Add a case
-          </Link>
+          <>
+            <ReloadButton onReload={() => void load()} busy={busy} />
+            <Link href="/cases/new" className="btn btn-primary">
+              Add a case
+            </Link>
+          </>
         }
       />
 

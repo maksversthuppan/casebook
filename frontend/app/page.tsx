@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { Banner, Chrome, Empty, PageHead, Sheet, Waiting } from "@/app/components/Chrome";
+import {
+  Banner,
+  Chrome,
+  Empty,
+  PageHead,
+  ReloadButton,
+  Sheet,
+  Waiting,
+} from "@/app/components/Chrome";
 import {
   api,
   caseLabel,
@@ -77,17 +85,33 @@ function TaskDue({ t }: { t: Task }) {
 export default function Home() {
   const [board, setBoard] = useState<Dashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setBusy(true);
     api
       .dashboard()
-      .then(setBoard)
+      .then((d) => {
+        setBoard(d);
+        setError(null);
+      })
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : "Could not load the dashboard"),
-      );
+      )
+      .finally(() => setBusy(false));
   }, []);
 
-  if (error) {
+  // setTimeout, not a direct call, so the effect body itself never sets state
+  // synchronously - the mount-time load is asynchronous the same way a
+  // reload triggered from the button is.
+  useEffect(() => {
+    const t = setTimeout(load, 0);
+    return () => clearTimeout(t);
+  }, [load]);
+
+  // Only the first load has nothing to show yet - a reload that fails leaves
+  // the board that's already on screen in place, with the error said inline.
+  if (error && !board) {
     return (
       <Chrome>
         <Banner kind="error">{error}</Banner>
@@ -108,7 +132,14 @@ export default function Home() {
         eyebrow={<span className="label">The day&rsquo;s list</span>}
         title="Today"
         lede="Cases you hold a role on. Anything the firm has closed or given up is left out."
+        action={<ReloadButton onReload={load} busy={busy} />}
       />
+
+      {error && (
+        <div className="mb-6">
+          <Banner kind="error">{error}</Banner>
+        </div>
+      )}
 
       <div className="grid gap-x-12 gap-y-10 lg:grid-cols-[1.6fr_1fr]">
         <div className="space-y-10">

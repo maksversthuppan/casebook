@@ -1,0 +1,79 @@
+<!doctype html>
+<!--
+  Shown from the moment the app launches until both sidecars answer their
+  health check (src/main.rs). Its text is updated from Rust via
+  `WebviewWindow::eval` - driven from the host side, not the webview calling
+  back into Tauri, so this needs no capability/permission grant and no
+  bundled @tauri-apps/api. `#status`'s id is load-bearing: eval() sets its
+  textContent by that id.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Casebook</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --ink: #1c1c1c;
+        --paper: #f6f4ef;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ink: #e8e6e1;
+          --paper: #17181a;
+        }
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--paper);
+        color: var(--ink);
+        font-family:
+          "Segoe UI",
+          system-ui,
+          sans-serif;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.1rem;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      h1 {
+        font-size: 1.15rem;
+        font-weight: 600;
+        margin: 0;
+        letter-spacing: 0.01em;
+      }
+      #spinner {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 3px solid color-mix(in srgb, var(--ink) 18%, transparent);
+        border-top-color: var(--ink);
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      #status {
+        font-size: 0.8125rem;
+        opacity: 0.75;
+        max-width: 320px;
+        text-align: center;
+        min-height: 1.2em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="spinner" aria-hidden="true"></div>
+    <h1>Casebook</h1>
+    <p id="status">Starting Casebook&hellip;</p>
+  </body>
+</html>
