@@ -29,6 +29,14 @@ export interface Court {
   is_complete: boolean;
 }
 
+/** One case type as DCMS itself names it ("OP", "Crl.MP", ...). One fixed
+ *  vocabulary, learned opportunistically from the ingestion wizard rather
+ *  than fetched live for this filter. */
+export interface CaseType {
+  id: string;
+  code: string;
+}
+
 /** The other side's lawyer, as the portal names them. Never a system user -
  *  see CONTEXT.md, "Counsel". A CaseParty may carry several at once. */
 export interface Counsel {
@@ -182,9 +190,11 @@ export interface Task {
 }
 
 /** Why a case came back from the search box. For diary and note hits the
- *  snippet marks the match with `<<` and `>>`. */
+ *  snippet marks the match with `<<` and `>>`. "advocate" is our own side
+ *  (the assignment roster or the Vakalath holder); "counsel" is the opposite
+ *  party's lawyer, as the portal names them. */
 export interface SearchMatch {
-  kind: "identifier" | "party" | "diary" | "note";
+  kind: "identifier" | "party" | "diary" | "note" | "advocate" | "counsel";
   snippet: string | null;
 }
 
@@ -266,14 +276,26 @@ export const api = {
   courts: (q?: string) =>
     request<Court[]>(`/courts${q ? `?q=${encodeURIComponent(q)}` : ""}`),
 
+  caseTypes: () => request<CaseType[]>("/case-types"),
+
   parties: (q?: string) =>
     request<Party[]>(`/parties${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   casesForParty: (id: string) => request<CaseSummary[]>(`/parties/${id}/cases`),
 
-  cases: (params: { q?: string; firm_status?: FirmStatus; mine?: boolean } = {}) => {
+  cases: (
+    params: {
+      q?: string;
+      firm_status?: FirmStatus;
+      case_type?: string;
+      court_id?: string;
+      mine?: boolean;
+    } = {},
+  ) => {
     const qs = new URLSearchParams();
     if (params.q) qs.set("q", params.q);
     if (params.firm_status) qs.set("firm_status", params.firm_status);
+    if (params.case_type) qs.set("case_type", params.case_type);
+    if (params.court_id) qs.set("court_id", params.court_id);
     if (params.mine) qs.set("mine", "true");
     const s = qs.toString();
     return request<CaseSummary[]>(`/cases${s ? `?${s}` : ""}`);
@@ -358,9 +380,17 @@ export const api = {
   deleteTask: (id: string, taskId: string) =>
     request<void>(`/cases/${id}/tasks/${taskId}`, { method: "DELETE" }),
 
-  search: (params: { q: string; firm_status?: FirmStatus; mine?: boolean }) => {
+  search: (params: {
+    q: string;
+    firm_status?: FirmStatus;
+    case_type?: string;
+    court_id?: string;
+    mine?: boolean;
+  }) => {
     const qs = new URLSearchParams({ q: params.q });
     if (params.firm_status) qs.set("firm_status", params.firm_status);
+    if (params.case_type) qs.set("case_type", params.case_type);
+    if (params.court_id) qs.set("court_id", params.court_id);
     if (params.mine) qs.set("mine", "true");
     return request<SearchHit[]>(`/search?${qs.toString()}`);
   },

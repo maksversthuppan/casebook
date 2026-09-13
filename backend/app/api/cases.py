@@ -36,6 +36,8 @@ async def list_cases(
     advocate: CurrentAdvocate,
     q: str | None = None,
     firm_status: FirmStatus | None = None,
+    case_type: str | None = None,
+    court_id: uuid.UUID | None = None,
     mine: bool = False,
 ) -> list[Case]:
     """The case list.
@@ -47,6 +49,12 @@ async def list_cases(
 
     if firm_status is not None:
         stmt = stmt.where(Case.firm_status == firm_status)
+
+    if case_type is not None:
+        stmt = stmt.where(Case.case_type == case_type)
+
+    if court_id is not None:
+        stmt = stmt.where(Case.court_id == court_id)
 
     if mine:
         stmt = stmt.where(

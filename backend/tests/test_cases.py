@@ -219,3 +219,27 @@ class TestListing:
         await _minimal_case(signed_in, str(advocates["anil"].id))
         found = (await signed_in.get("/api/cases", params={"q": "rajan"})).json()
         assert len(found) == 1
+
+    async def test_list_filters_on_case_type(self, signed_in, advocates):
+        op = (
+            await _minimal_case(signed_in, str(advocates["anil"].id), case_type="OP")
+        ).json()
+        await _minimal_case(signed_in, str(advocates["anil"].id), case_type="OS")
+
+        found = (await signed_in.get("/api/cases", params={"case_type": "OP"})).json()
+        assert [c["id"] for c in found] == [op["id"]]
+
+    async def test_list_filters_on_court(self, signed_in, advocates):
+        elsewhere = (
+            await _minimal_case(
+                signed_in, str(advocates["anil"].id), new_court_name="Family Court, Kochi"
+            )
+        ).json()
+        await _minimal_case(signed_in, str(advocates["anil"].id))  # default court
+
+        found = (
+            await signed_in.get(
+                "/api/cases", params={"court_id": elsewhere["court"]["id"]}
+            )
+        ).json()
+        assert [c["id"] for c in found] == [elsewhere["id"]]

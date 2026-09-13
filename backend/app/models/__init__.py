@@ -13,6 +13,7 @@ from app.models.case import (
     FirmStatusChange,
     Tag,
 )
+from app.models.case_type import CaseType
 from app.models.court import Court
 from app.models.dcms import DcmsSnapshot
 from app.models.enums import (
@@ -42,6 +43,7 @@ __all__ = [
     "CaseParty",
     "CaseRelation",
     "CaseTag",
+    "CaseType",
     "Clerk",
     "Counsel",
     "Court",

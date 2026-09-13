@@ -10,6 +10,7 @@ import {
   PageHead,
   ReloadButton,
   Waiting,
+  inputClass,
 } from "@/app/components/Chrome";
 import {
   FIRM_STATUS_LABEL,
@@ -20,9 +21,13 @@ import {
   isPast,
   opponentsOf,
   type CaseSummary,
+  type CaseType,
+  type Court,
   type FirmStatus,
   type SearchMatch,
 } from "@/lib/api";
+
+import { CourtFilter } from "./CourtFilter";
 
 const STATUSES: (FirmStatus | "all")[] = ["active", "on_hold", "relinquished", "closed", "all"];
 
@@ -31,6 +36,8 @@ const MATCH_LABEL: Record<SearchMatch["kind"], string> = {
   party: "party",
   diary: "diary",
   note: "note",
+  advocate: "our advocate",
+  counsel: "opposing counsel",
 };
 
 /** Why this case came back, so nobody has to open it to find out. The snippet
@@ -91,22 +98,34 @@ export default function CasesPage() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<FirmStatus | "all">("active");
+  const [caseType, setCaseType] = useState("");
+  const [court, setCourt] = useState<Court | null>(null);
+  const [caseTypes, setCaseTypes] = useState<CaseType[]>([]);
   const [mine, setMine] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .caseTypes()
+      .then(setCaseTypes)
+      .catch(() => setCaseTypes([]));
+  }, []);
 
   const load = useCallback(async () => {
     setBusy(true);
     try {
       setError(null);
       const firm_status = status === "all" ? undefined : status;
+      const case_type = caseType || undefined;
+      const court_id = court?.id;
       if (q.trim()) {
         // One box over identifiers, the people involved and the firm's own
         // writing. The endpoint says why each case came back.
-        const hits = await api.search({ q: q.trim(), firm_status, mine });
+        const hits = await api.search({ q: q.trim(), firm_status, case_type, court_id, mine });
         setCases(hits.map((h) => h.case));
         setWhy(Object.fromEntries(hits.map((h) => [h.case.id, h.matches])));
       } else {
-        setCases(await api.cases({ firm_status, mine }));
+        setCases(await api.cases({ firm_status, case_type, court_id, mine }));
         setWhy({});
       }
     } catch (e) {
@@ -114,7 +133,7 @@ export default function CasesPage() {
     } finally {
       setBusy(false);
     }
-  }, [q, status, mine]);
+  }, [q, status, caseType, court, mine]);
 
   useEffect(() => {
     const t = setTimeout(load, q ? 250 : 0);
@@ -140,7 +159,7 @@ export default function CasesPage() {
           box, just a rule under it. */}
       <input
         className="rise rise-2 mb-6 w-full max-w-2xl border-b border-rule-strong bg-transparent pb-1.5 font-display text-[1.05rem] italic outline-none placeholder:text-ink-faint focus:border-firm"
-        placeholder="a number, a name, or anything written in the diary…"
+        placeholder="a number, a name, a lawyer, or anything written in the diary…"
         aria-label="Find a case"
         value={q}
         onChange={(e) => setQ(e.target.value)}
@@ -173,6 +192,22 @@ export default function CasesPage() {
           />
           Only mine
         </label>
+
+        <select
+          className={`${inputClass} w-auto py-1 text-[0.75rem]`}
+          aria-label="Filter by case type"
+          value={caseType}
+          onChange={(e) => setCaseType(e.target.value)}
+        >
+          <option value="">All case types</option>
+          {caseTypes.map((t) => (
+            <option key={t.id} value={t.code}>
+              {t.code}
+            </option>
+          ))}
+        </select>
+
+        <CourtFilter value={court} onChange={setCourt} />
 
         {cases && (
           <span className="ident ml-auto text-[0.6875rem] text-ink-faint">

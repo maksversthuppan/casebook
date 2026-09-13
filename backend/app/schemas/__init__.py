@@ -15,6 +15,7 @@ from app.schemas.case import (
     TagOut,
     VakalathIn,
 )
+from app.schemas.case_type import CaseTypeOut
 from app.schemas.court import CourtIn, CourtOut
 from app.schemas.people import AdvocateOut, ClerkIn, ClerkOut, LoginIn, PartyIn, PartyOut
 
@@ -29,6 +30,7 @@ __all__ = [
     "CasePartyOut",
     "CaseRelationOut",
     "CaseSummary",
+    "CaseTypeOut",
     "CaseUpdate",
     "ClerkIn",
     "ClerkOut",

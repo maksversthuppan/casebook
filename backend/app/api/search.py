@@ -14,9 +14,11 @@ from sqlalchemy import String, cast, func, literal_column, or_, select
 from app.api.deps import CurrentAdvocate, Db
 from app.config import today_in_court
 from app.models import (
+    Advocate,
     Assignment,
     Case,
     CaseParty,
+    Counsel,
     DiaryEntry,
     FirmStatus,
     Hearing,
@@ -25,6 +27,7 @@ from app.models import (
     Party,
     Task,
 )
+from app.models.enums import PartyRole
 from app.schemas.search import Dashboard, DashboardHearing, SearchHit, SearchMatch
 
 router = APIRouter(tags=["search"])
@@ -61,6 +64,8 @@ async def search(
     advocate: CurrentAdvocate,
     q: str,
     firm_status: FirmStatus | None = None,
+    case_type: str | None = None,
+    court_id: uuid.UUID | None = None,
     mine: bool = False,
     limit: int = 50,
 ) -> list[SearchHit]:
@@ -106,6 +111,35 @@ async def search(
     for cid, name in people:
         note(cid, "party", name)
 
+    # Our own side: the Assignment roster, or the Vakalath holder if that
+    # name is not one of the firm's own Advocates. Never the portal-reported
+    # Counsel on our client's side - that is the documented mixup, not this.
+    assigned = await db.execute(
+        select(Assignment.case_id, Advocate.name)
+        .join(Advocate, Advocate.id == Assignment.advocate_id)
+        .where(Advocate.name.ilike(like))
+    )
+    for cid, name in assigned:
+        note(cid, "advocate", name)
+
+    vakalath = await db.execute(
+        select(Case.id, Case.vakalath_holder_name).where(
+            Case.vakalath_holder_name.ilike(like)
+        )
+    )
+    for cid, name in vakalath:
+        note(cid, "advocate", name)
+
+    # The other side's lawyer, as the portal names them - only where the
+    # CaseParty they are attached to is the opposite party (PartyRole).
+    counsel = await db.execute(
+        select(CaseParty.case_id, Counsel.name)
+        .join(Counsel, Counsel.case_party_id == CaseParty.id)
+        .where(CaseParty.role == PartyRole.opposite_party, Counsel.name.ilike(like))
+    )
+    for cid, name in counsel:
+        note(cid, "counsel", name)
+
     diary = await db.execute(
         select(DiaryEntry.case_id, _headline(DiaryEntry.body, term)).where(
             func.to_tsvector(TS_CONFIG, DiaryEntry.body).op("@@")(tsquery)
@@ -128,6 +162,10 @@ async def search(
     stmt = select(Case).where(Case.id.in_(reasons.keys()))
     if firm_status is not None:
         stmt = stmt.where(Case.firm_status == firm_status)
+    if case_type is not None:
+        stmt = stmt.where(Case.case_type == case_type)
+    if court_id is not None:
+        stmt = stmt.where(Case.court_id == court_id)
     if mine:
         stmt = stmt.where(
             Case.id.in_(select(Assignment.case_id).where(Assignment.advocate_id == advocate.id))
@@ -139,7 +177,13 @@ async def search(
     # not buried under prose that happens to contain the word.
     def rank(case: Case) -> tuple[int, str]:
         kinds = {m.kind for m in reasons[case.id]}
-        best = 0 if "identifier" in kinds else 1 if "party" in kinds else 2
+        best = (
+            0
+            if "identifier" in kinds
+            else 1
+            if kinds & {"party", "advocate", "counsel"}
+            else 2
+        )
         return (best, case.created_at.isoformat())
 
     cases.sort(key=rank)

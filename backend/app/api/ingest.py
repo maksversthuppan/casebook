@@ -31,6 +31,7 @@ from app.schemas.ingest import (
     SubmitIn,
     SubmitOut,
 )
+from app.services.case_types import record_case_types
 from app.services.ingest import create_case_from_snapshot
 
 log = logging.getLogger(__name__)
@@ -101,6 +102,11 @@ async def choose_court(
         case_types = await portal.case_types(session.page)
     except portal.PortalError as exc:
         raise _portal_error(exc) from exc
+
+    # Opportunistic, not a dedicated pull: the case-type list is the same
+    # regardless of which court this is, so every session that reads it fills
+    # in the firm's own copy a little more.
+    await record_case_types(db, case_types)
 
     # Do we already know this establishment? If so the Case will attach to the
     # existing Court rather than making a second one.

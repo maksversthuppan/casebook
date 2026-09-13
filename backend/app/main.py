@@ -4,7 +4,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api import auth, cases, clerks, courts, ingest, parties, record, refresh, search
+from app.api import (
+    auth,
+    case_types,
+    cases,
+    clerks,
+    courts,
+    ingest,
+    parties,
+    record,
+    refresh,
+    search,
+)
 from app.config import get_settings
 from app.dcms import browser as dcms_browser
 from app.dcms.session import registry as portal_sessions
@@ -48,6 +59,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(case_types.router, prefix="/api")
 app.include_router(courts.router, prefix="/api")
 app.include_router(parties.router, prefix="/api")
 app.include_router(clerks.router, prefix="/api")

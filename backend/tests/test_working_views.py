@@ -8,6 +8,7 @@ edited - and a Task outliving the Diary Entry it arose from.
 import datetime as dt
 
 from app.config import today_in_court
+from app.models import Counsel
 
 #: The same clock the dashboard uses. Taken from `today_in_court` rather than
 #: `date.today()` so the two cannot disagree about which day it is.
@@ -287,6 +288,79 @@ class TestSearch:
     ):
         await _case(signed_in, str(advocates["anil"].id))
         assert (await signed_in.get("/api/search?q=%20%20")).json() == []
+
+    async def test_the_case_type_filter_still_applies(self, signed_in, advocates):
+        op = await _case(signed_in, str(advocates["anil"].id), case_type="OP")
+        await _case(signed_in, str(advocates["anil"].id), case_type="OS")
+
+        both = (await signed_in.get("/api/search?q=Rajan")).json()
+        assert len(both) == 2
+
+        only_op = (await signed_in.get("/api/search?q=Rajan&case_type=OP")).json()
+        assert [h["case"]["id"] for h in only_op] == [op["id"]]
+
+    async def test_the_court_filter_still_applies(self, signed_in, advocates):
+        first = await _case(signed_in, str(advocates["anil"].id))
+        second = await _case(
+            signed_in, str(advocates["anil"].id), new_court_name="Family Court, Kochi"
+        )
+
+        both = (await signed_in.get("/api/search?q=Rajan")).json()
+        assert len(both) == 2
+
+        only_second = (
+            await signed_in.get(f"/api/search?q=Rajan&court_id={second['court']['id']}")
+        ).json()
+        assert [h["case"]["id"] for h in only_second] == [second["id"]]
+
+    async def test_it_finds_a_case_by_our_own_advocates_name(self, signed_in, advocates):
+        """Anil Kumar is the assigned advocate - "our lawyer" as the firm
+        itself would mean it, not a portal-reported name."""
+        await _case(signed_in, str(advocates["anil"].id))
+        hits = (await signed_in.get("/api/search?q=Kumar")).json()
+        assert len(hits) == 1
+        assert hits[0]["matches"][0]["kind"] == "advocate"
+
+    async def test_it_finds_a_case_by_the_vakalath_holders_name(self, signed_in, advocates):
+        case = await _case(signed_in, str(advocates["anil"].id))
+        await signed_in.put(
+            f"/api/cases/{case['id']}/vakalath", json={"holder_name": "Ravi Varma"}
+        )
+        hits = (await signed_in.get("/api/search?q=Varma")).json()
+        assert len(hits) == 1
+        assert hits[0]["matches"][0]["kind"] == "advocate"
+
+    async def test_it_finds_a_case_by_the_opposite_partys_counsel(
+        self, signed_in, advocates, db
+    ):
+        case = await _case(
+            signed_in,
+            str(advocates["anil"].id),
+            parties=[
+                {"new_party": {"name": "Rajan K"}, "role": "client"},
+                {"new_party": {"name": "KSEB"}, "role": "opposite_party"},
+            ],
+        )
+        opposite = next(p for p in case["parties"] if p["role"] == "opposite_party")
+        db.add(Counsel(case_party_id=opposite["id"], name="Suresh Menon"))
+        await db.commit()
+
+        hits = (await signed_in.get("/api/search?q=Menon")).json()
+        assert len(hits) == 1
+        assert hits[0]["matches"][0]["kind"] == "counsel"
+
+    async def test_counsel_on_our_own_clients_side_is_not_searched(
+        self, signed_in, advocates, db
+    ):
+        """The documented mixup (ROADMAP 2026-08-10, ADR-0008): a Counsel row
+        against our own client's CaseParty is ours to avoid surfacing as
+        opposing counsel, not a lawyer-name hit."""
+        case = await _case(signed_in, str(advocates["anil"].id))
+        client_party = case["parties"][0]
+        db.add(Counsel(case_party_id=client_party["id"], name="Suresh Menon"))
+        await db.commit()
+
+        assert (await signed_in.get("/api/search?q=Menon")).json() == []
 
 
 class TestDashboard:

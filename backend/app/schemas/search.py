@@ -9,9 +9,16 @@ from app.schemas.record import HearingOut, TaskOut
 
 class SearchMatch(BaseModel):
     """Why a Case came back. `snippet` marks the hit with `<<` and `>>` for the
-    prose kinds; identifier and party matches carry the value itself."""
+    prose kinds; identifier, party, advocate and counsel matches carry the
+    value itself.
 
-    kind: Literal["identifier", "party", "diary", "note"]
+    `advocate` is our own side: the Assignment roster or the Vakalath holder.
+    `counsel` is the opposite party's lawyer, as the portal names them - never
+    a Counsel row against our own client's side, which is a documented mixup
+    rather than opposing counsel (ROADMAP 2026-08-10, ADR-0008).
+    """
+
+    kind: Literal["identifier", "party", "diary", "note", "advocate", "counsel"]
     snippet: str | None
 
 
